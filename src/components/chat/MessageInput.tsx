@@ -1,0 +1,207 @@
+// src/components/chat/MessageInput.tsx
+// Chat message input with attachments
+
+import React, { useState } from 'react';
+import {
+  View,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import { colors, spacing, radius, typography } from '../../constants';
+
+interface MessageInputProps {
+  onSendText: (text: string) => void;
+  onSendImage: (uri: string) => void;
+  onSendVoice?: () => void;
+  onSuggestActivity?: () => void;
+  isSending?: boolean;
+}
+
+export const MessageInput: React.FC<MessageInputProps> = ({
+  onSendText,
+  onSendImage,
+  onSendVoice,
+  onSuggestActivity,
+  isSending = false,
+}) => {
+  const [message, setMessage] = useState('');
+
+  const handleSend = () => {
+    if (message.trim()) {
+      onSendText(message.trim());
+      setMessage('');
+    }
+  };
+
+  const handlePickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      onSendImage(result.assets[0].uri);
+    }
+  };
+
+  const handleCamera = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) return;
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      onSendImage(result.assets[0].uri);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={100}
+    >
+      {/* Suggest Activity Button */}
+      {onSuggestActivity && (
+        <TouchableOpacity
+          onPress={onSuggestActivity}
+          style={styles.suggestButton}
+        >
+          <Ionicons name="sparkles" size={16} color={colors.primary[500]} />
+          <Ionicons
+            name="add"
+            size={14}
+            color={colors.primary[500]}
+            style={styles.addIcon}
+          />
+          <Text style={styles.suggestText}>SUGGEST AN ACTIVITY</Text>
+        </TouchableOpacity>
+      )}
+
+      <View style={styles.container}>
+        {/* Attachment buttons */}
+        <TouchableOpacity
+          onPress={handlePickImage}
+          style={styles.iconButton}
+          disabled={isSending}
+        >
+          <Ionicons name="image-outline" size={24} color={colors.text.secondary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={handleCamera}
+          style={styles.iconButton}
+          disabled={isSending}
+        >
+          <Ionicons name="camera-outline" size={24} color={colors.text.secondary} />
+        </TouchableOpacity>
+
+        {/* Text input */}
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            value={message}
+            onChangeText={setMessage}
+            placeholder="Type a message..."
+            placeholderTextColor={colors.text.tertiary}
+            multiline
+            maxLength={1000}
+            editable={!isSending}
+          />
+        </View>
+
+        {/* Send or Voice button */}
+        {message.trim() ? (
+          <TouchableOpacity
+            onPress={handleSend}
+            style={styles.sendButton}
+            disabled={isSending}
+          >
+            <Ionicons name="send" size={20} color={colors.neutral.white} />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            onPress={onSendVoice}
+            style={styles.sendButton}
+            disabled={isSending}
+          >
+            <Ionicons name="mic" size={20} color={colors.neutral.white} />
+          </TouchableOpacity>
+        )}
+      </View>
+    </KeyboardAvoidingView>
+  );
+};
+
+// Need to import Text for suggestButton
+import { Text } from 'react-native';
+
+const styles = StyleSheet.create({
+  suggestButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    paddingVertical: spacing[2],
+    paddingHorizontal: spacing[4],
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.primary[500],
+    marginBottom: spacing[3],
+    backgroundColor: colors.neutral.white,
+  },
+  addIcon: {
+    marginLeft: -4,
+    marginRight: spacing[2],
+  },
+  suggestText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: '600',
+    color: colors.primary[500],
+    letterSpacing: 0.5,
+  },
+  container: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+    backgroundColor: colors.neutral.white,
+    borderTopWidth: 1,
+    borderTopColor: colors.neutral[200],
+  },
+  iconButton: {
+    padding: spacing[2],
+    marginRight: spacing[1],
+  },
+  inputContainer: {
+    flex: 1,
+    backgroundColor: colors.neutral[100],
+    borderRadius: radius.xl,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
+    marginRight: spacing[2],
+    maxHeight: 100,
+  },
+  input: {
+    fontSize: typography.fontSize.base,
+    color: colors.text.primary,
+    minHeight: 36,
+    maxHeight: 80,
+  },
+  sendButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.neutral[900],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
+
