@@ -44,7 +44,7 @@ const SettingsItem: React.FC<SettingsItemProps> = ({
 );
 
 export default function SettingsScreen() {
-  const { signOut } = useAuthStore();
+  const { user } = useAuthStore();
   const { profile, partner } = useUserStore();
 
   const handleClose = () => {
@@ -58,11 +58,29 @@ export default function SettingsScreen() {
         text: 'Sign Out',
         style: 'destructive',
         onPress: async () => {
-          await signOut();
+          try {
+            // Sign out from Firebase
+            const { auth } = await import('../src/services/firebase/config');
+            const { signOut } = await import('firebase/auth');
+            await signOut(auth);
+          } catch (error) {
+            console.log('Firebase sign out failed');
+          }
+          // Clear local state
+          useAuthStore.setState({
+            user: null,
+            firebaseUser: null,
+            isLoading: false,
+            isInitialized: true,
+          });
           router.replace('/(auth)/login');
         },
       },
     ]);
+  };
+
+  const handleConnectPartner = () => {
+    router.push('/(auth)/partner-connection');
   };
 
   const handleEditProfile = () => {
@@ -80,6 +98,8 @@ export default function SettingsScreen() {
   const handleHelp = () => {
     Alert.alert('Help', 'Help & Support coming soon!');
   };
+
+  const isConnected = !!user?.connectedTo || !!partner;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -112,7 +132,7 @@ export default function SettingsScreen() {
         </Card>
 
         {/* Connection Info */}
-        {partner && (
+        {isConnected && partner ? (
           <Card style={styles.connectionCard}>
             <Text style={styles.connectionLabel}>Connected to</Text>
             <View style={styles.connectionRow}>
@@ -128,6 +148,20 @@ export default function SettingsScreen() {
                   {partner.isOnline ? 'Online' : 'Offline'}
                 </Text>
               </View>
+            </View>
+          </Card>
+        ) : (
+          <Card style={styles.connectionCard}>
+            <View style={styles.notConnectedContainer}>
+              <Ionicons name="people-outline" size={32} color={colors.text.tertiary} />
+              <Text style={styles.notConnectedTitle}>Not connected yet</Text>
+              <Text style={styles.notConnectedText}>
+                Connect with your {profile?.role === 'parent' ? 'caregiver' : 'parent'} to start sharing reminders and staying in touch.
+              </Text>
+              <TouchableOpacity style={styles.connectButton} onPress={handleConnectPartner}>
+                <Ionicons name="link" size={18} color={colors.neutral.white} />
+                <Text style={styles.connectButtonText}>Connect Now</Text>
+              </TouchableOpacity>
             </View>
           </Card>
         )}
@@ -252,6 +286,38 @@ const styles = StyleSheet.create({
   connectionStatus: {
     fontSize: typography.fontSize.sm,
     color: colors.text.secondary,
+  },
+  notConnectedContainer: {
+    alignItems: 'center',
+    paddingVertical: spacing[2],
+  },
+  notConnectedTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginTop: spacing[3],
+    marginBottom: spacing[1],
+  },
+  notConnectedText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    marginBottom: spacing[4],
+    lineHeight: 20,
+  },
+  connectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary[500],
+    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[5],
+    borderRadius: radius.lg,
+    gap: spacing[2],
+  },
+  connectButtonText: {
+    fontSize: typography.fontSize.base,
+    fontWeight: '600',
+    color: colors.neutral.white,
   },
   settingsGroup: {
     marginBottom: spacing[6],

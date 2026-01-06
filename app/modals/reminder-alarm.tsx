@@ -1,43 +1,91 @@
 // app/modals/reminder-alarm.tsx
 // Reminder alarm modal for parent
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Vibration } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { format } from 'date-fns';
+import { Audio } from 'expo-av';
 import { Button } from '../../src/components/common';
-import { useReminderStore } from '../../src/stores';
+import { useReminderStore, useAuthStore } from '../../src/stores';
 import { colors, spacing, typography, radius, reminderIcons } from '../../src/constants';
 
 export default function ReminderAlarmScreen() {
   const { reminderId } = useLocalSearchParams<{ reminderId: string }>();
   const { reminders, markAsDone, snooze } = useReminderStore();
+  const { user } = useAuthStore();
+  const soundRef = useRef<Audio.Sound | null>(null);
 
   const reminder = reminders.find((r) => r.id === reminderId);
 
   useEffect(() => {
+    // Set up audio mode
+    const setupAudio = async () => {
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: false,
+      });
+    };
+    setupAudio();
+
     // Vibrate on mount
     Vibration.vibrate([0, 500, 200, 500], true);
 
+    // Play ringtone
+    const playRingtone = async () => {
+      try {
+        // Use custom ringtone if available
+        if (reminder?.customAlarmAudioUrl) {
+          const { sound } = await Audio.Sound.createAsync(
+            { uri: reminder.customAlarmAudioUrl },
+            { shouldPlay: true, isLooping: true, volume: 1.0 }
+          );
+          soundRef.current = sound;
+        }
+        // Note: For default ringtone, add an alarm.mp3 file to assets/sounds/
+        // The app will use vibration as fallback if no sound file exists
+      } catch (error) {
+        console.log('Could not play ringtone, using vibration only:', error);
+        // Continue with vibration only if sound fails
+      }
+    };
+    playRingtone();
+
     return () => {
       Vibration.cancel();
+      // Stop and unload sound
+      if (soundRef.current) {
+        soundRef.current.stopAsync();
+        soundRef.current.unloadAsync();
+      }
     };
-  }, []);
+  }, [reminder?.customAlarmAudioUrl]);
+
+  const stopAlarm = async () => {
+    Vibration.cancel();
+    if (soundRef.current) {
+      await soundRef.current.stopAsync();
+      await soundRef.current.unloadAsync();
+      soundRef.current = null;
+    }
+  };
 
   const handleDone = async () => {
     if (reminderId) {
+      await stopAlarm();
       await markAsDone(reminderId);
-      Vibration.cancel();
       router.back();
     }
   };
 
   const handleSnooze = async () => {
-    if (reminderId) {
-      await snooze(reminderId, 10);
-      Vibration.cancel();
+    if (reminderId && reminder) {
+      await stopAlarm();
+      // Pass user info for notification to child on 2nd snooze
+      await snooze(reminderId, 10, user?.connectedTo, reminder.snoozeCount, reminder.title);
       router.back();
     }
   };

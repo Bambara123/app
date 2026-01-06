@@ -9,7 +9,7 @@ import { router } from 'expo-router';
 import {
   GreetingCard,
   RhythmCard,
-  SparkCard,
+  NoteCard,
   StatusCard,
 } from '../../src/components/home';
 import { Card, Avatar, Button } from '../../src/components/common';
@@ -61,8 +61,15 @@ export default function ChildHomeScreen() {
     router.push('/modals/settings');
   };
 
-  const handleSparkPress = () => {
-    router.push('/(child)/chat');
+  const handleSaveNoteForParent = async (note: string) => {
+    if (profile?.id) {
+      try {
+        const { userService } = await import('../../src/services/firebase/firestore');
+        await userService.updateUser(profile.id, { noteForPartner: note });
+      } catch (error) {
+        console.log('Failed to save note:', error);
+      }
+    }
   };
 
   const handleOpenMaps = () => {
@@ -204,8 +211,22 @@ export default function ChildHomeScreen() {
           iconColor={colors.accent.main}
         />
 
-        {/* Spark a Thought */}
-        <SparkCard onPress={handleSparkPress} />
+        {/* Note from Parent - Child reads the note from parent */}
+        <NoteCard
+          note={partnerNote}
+          partnerName={partner?.name || 'Parent'}
+          isEditable={false}
+        />
+
+        {/* Note for Parent - Child writes note for parent */}
+        <View style={{ marginTop: spacing[4] }}>
+          <NoteCard
+            note={profile?.noteForPartner || null}
+            partnerName={partner?.name || 'Parent'}
+            isEditable={true}
+            onSaveNote={handleSaveNoteForParent}
+          />
+        </View>
 
         {/* Location Map */}
         {renderLocationCard()}

@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { View, FlatList, StyleSheet, Text, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { ReminderCard, ReminderFilters } from '../../src/components/reminders';
 import { useReminderStore, useUserStore } from '../../src/stores';
 import { colors, spacing, typography, radius } from '../../src/constants';
@@ -31,22 +32,13 @@ export default function ChildRemindersScreen() {
   }, [profile?.id]);
 
   const handleCreateReminder = () => {
-    // In a full implementation, navigate to create screen or show modal
-    Alert.alert(
-      'Create Reminder',
-      'Reminder creation UI would open here. For demo, reminders are pre-populated.',
-      [{ text: 'OK' }]
-    );
+    setSelectedReminder(null);
+    router.push('/modals/create-reminder');
   };
 
   const handleEditReminder = (reminder: Reminder) => {
     setSelectedReminder(reminder);
-    // Navigate to edit screen
-    Alert.alert(
-      'Edit Reminder',
-      `Editing: ${reminder.title}`,
-      [{ text: 'OK' }]
-    );
+    router.push('/modals/create-reminder');
   };
 
   const handleDeleteReminder = async (reminderId: string) => {

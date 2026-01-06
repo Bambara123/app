@@ -14,7 +14,6 @@ interface ReminderCardProps {
   isParent?: boolean;
   onPress?: () => void;
   onDone?: () => void;
-  onSnooze?: () => void;
 }
 
 const labelColors: Record<ReminderLabel, { bg: string; accent: string }> = {
@@ -30,7 +29,6 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
   isParent = false,
   onPress,
   onDone,
-  onSnooze,
 }) => {
   const labelStyle = labelColors[reminder.label] || labelColors.other;
 
@@ -105,23 +103,15 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
           </View>
         </View>
 
-        {/* Actions for parent */}
+        {/* Actions for parent - only Done button, Snooze is only available when alarm rings */}
         {isParent && reminder.status === 'pending' && (
           <View style={styles.actions}>
-            <TouchableOpacity
-              onPress={onSnooze}
-              style={[styles.actionButton, styles.snoozeButton]}
-            >
-              <Ionicons name="alarm-outline" size={18} color={colors.text.secondary} />
-              <Text style={styles.snoozeText}>Snooze</Text>
-            </TouchableOpacity>
-
             <TouchableOpacity
               onPress={onDone}
               style={[styles.actionButton, styles.doneButton]}
             >
               <Ionicons name="checkmark-circle" size={18} color={colors.neutral.white} />
-              <Text style={styles.doneText}>Done</Text>
+              <Text style={styles.doneText}>Mark as Done</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -200,16 +190,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[4],
     borderRadius: radius.full,
     gap: spacing[1],
-  },
-  snoozeButton: {
-    backgroundColor: colors.neutral.white,
-    borderWidth: 1,
-    borderColor: colors.neutral[300],
-  },
-  snoozeText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.text.secondary,
-    fontWeight: '500',
   },
   doneButton: {
     backgroundColor: colors.success.main,

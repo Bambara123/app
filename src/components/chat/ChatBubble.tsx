@@ -1,10 +1,11 @@
 // src/components/chat/ChatBubble.tsx
-// Chat message bubble
+// Chat message bubble with audio playback
 
-import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
+import { Audio } from 'expo-av';
 import { colors, spacing, radius, typography } from '../../constants';
 import { Message, MessageType } from '../../types';
 
@@ -12,15 +13,79 @@ interface ChatBubbleProps {
   message: Message;
   isSent: boolean;
   onImagePress?: (url: string) => void;
-  onVoicePress?: (url: string, duration: number) => void;
 }
 
 export const ChatBubble: React.FC<ChatBubbleProps> = ({
   message,
   isSent,
   onImagePress,
-  onVoicePress,
 }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackProgress, setPlaybackProgress] = useState(0);
+  const soundRef = useRef<Audio.Sound | null>(null);
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+      }
+    };
+  }, []);
+
+  const handleVoicePlay = async () => {
+    if (!message.mediaUrl) return;
+
+    try {
+      // If already playing, stop
+      if (isPlaying && soundRef.current) {
+        await soundRef.current.stopAsync();
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+        setIsPlaying(false);
+        setPlaybackProgress(0);
+        progressAnim.setValue(0);
+        return;
+      }
+
+      // Set audio mode
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+      });
+
+      // Load and play
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: message.mediaUrl },
+        { shouldPlay: true },
+        onPlaybackStatusUpdate
+      );
+      soundRef.current = sound;
+      setIsPlaying(true);
+    } catch (error) {
+      console.log('Error playing voice message:', error);
+      setIsPlaying(false);
+    }
+  };
+
+  const onPlaybackStatusUpdate = (status: any) => {
+    if (status.isLoaded) {
+      if (status.didJustFinish) {
+        setIsPlaying(false);
+        setPlaybackProgress(0);
+        progressAnim.setValue(0);
+        if (soundRef.current) {
+          soundRef.current.unloadAsync();
+          soundRef.current = null;
+        }
+      } else if (status.isPlaying && status.durationMillis) {
+        const progress = status.positionMillis / status.durationMillis;
+        setPlaybackProgress(progress);
+        progressAnim.setValue(progress);
+      }
+    }
+  };
   const renderContent = () => {
     switch (message.type) {
       case 'text':
@@ -47,32 +112,45 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
       case 'voice':
         return (
           <TouchableOpacity
-            onPress={() =>
-              message.mediaUrl &&
-              onVoicePress?.(message.mediaUrl, message.duration || 0)
-            }
+            onPress={handleVoicePlay}
             style={styles.voiceContainer}
+            activeOpacity={0.7}
           >
             <Ionicons
-              name="play-circle"
+              name={isPlaying ? 'pause-circle' : 'play-circle'}
               size={36}
               color={isSent ? colors.neutral.white : colors.primary[500]}
             />
-            <View style={styles.voiceWave}>
-              {[...Array(8)].map((_, i) => (
-                <View
-                  key={i}
+            <View style={styles.voiceWaveContainer}>
+              <View style={styles.voiceWave}>
+                {[...Array(12)].map((_, i) => (
+                  <Animated.View
+                    key={i}
+                    style={[
+                      styles.voiceBar,
+                      {
+                        height: Math.random() * 16 + 8,
+                        backgroundColor: isSent
+                          ? 'rgba(255,255,255,0.6)'
+                          : colors.primary[300],
+                        opacity: isPlaying && i / 12 <= playbackProgress ? 1 : 0.4,
+                      },
+                    ]}
+                  />
+                ))}
+              </View>
+              {/* Progress bar */}
+              <View style={[styles.progressBar, { backgroundColor: isSent ? 'rgba(255,255,255,0.3)' : colors.primary[100] }]}>
+                <Animated.View 
                   style={[
-                    styles.voiceBar,
-                    {
-                      height: Math.random() * 16 + 8,
-                      backgroundColor: isSent
-                        ? 'rgba(255,255,255,0.6)'
-                        : colors.primary[300],
-                    },
-                  ]}
+                    styles.progressFill, 
+                    { 
+                      backgroundColor: isSent ? colors.neutral.white : colors.primary[500],
+                      width: `${playbackProgress * 100}%`,
+                    }
+                  ]} 
                 />
-              ))}
+              </View>
             </View>
             <Text
               style={[
@@ -173,21 +251,35 @@ const styles = StyleSheet.create({
   voiceContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    minWidth: 150,
+    minWidth: 180,
+  },
+  voiceWaveContainer: {
+    flex: 1,
+    marginHorizontal: spacing[2],
   },
   voiceWave: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: spacing[2],
     gap: 2,
+    marginBottom: spacing[1],
   },
   voiceBar: {
     width: 3,
     borderRadius: 2,
   },
+  progressBar: {
+    height: 3,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
   voiceDuration: {
     fontSize: typography.fontSize.xs,
     marginLeft: spacing[2],
+    minWidth: 35,
   },
   time: {
     fontSize: typography.fontSize.xs,

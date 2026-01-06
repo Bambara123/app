@@ -9,7 +9,6 @@ import { router } from 'expo-router';
 import { Button } from '../../src/components/common';
 import { useAuthStore } from '../../src/stores';
 import { colors, spacing, typography, radius } from '../../src/constants';
-import { isDemoMode } from '../../src/services/firebase/config';
 
 // Password validation requirements
 const PASSWORD_REQUIREMENTS = {
@@ -21,7 +20,6 @@ const PASSWORD_REQUIREMENTS = {
 };
 
 export default function LoginScreen() {
-  const { demoSignIn } = useAuthStore();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -133,54 +131,26 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      if (isDemoMode) {
-        // Demo mode - create local user
-        const user = {
-          id: `user-${Date.now()}`,
-          name: name.trim() || email.split('@')[0],
-          email: email.trim().toLowerCase(),
-          profileImageUrl: null,
-          phone: null,
-          role: null,
-          connectedTo: null,
-          noteForPartner: null,
-          customGreeting: null,
-          batteryPercentage: 100,
-          mood: 'happy' as const,
-          lastLocation: null,
-          expoPushToken: null,
-          lastInteraction: new Date(),
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
+      // Firebase Auth
+      const { registerWithEmail, signInWithEmail } = await import(
+        '../../src/services/firebase/auth'
+      );
 
+      let user;
+      if (isLogin) {
+        // Sign in
+        user = await signInWithEmail(email.trim(), password);
+      } else {
+        // Register
+        user = await registerWithEmail(email.trim(), password, name.trim());
+      }
+
+      if (user) {
         useAuthStore.setState({
           user,
           isLoading: false,
           isInitialized: true,
         });
-      } else {
-        // Real Firebase Auth
-        const { registerWithEmail, signInWithEmail } = await import(
-          '../../src/services/firebase/auth'
-        );
-
-        let user;
-        if (isLogin) {
-          // Sign in
-          user = await signInWithEmail(email.trim(), password);
-        } else {
-          // Register
-          user = await registerWithEmail(email.trim(), password, name.trim());
-        }
-
-        if (user) {
-          useAuthStore.setState({
-            user,
-            isLoading: false,
-            isInitialized: true,
-          });
-        }
       }
 
       // Navigate to role selection
@@ -513,14 +483,6 @@ export default function LoginScreen() {
               />
             )}
           </View>
-
-          {/* Demo Mode */}
-          <Button
-            title="Try Demo Mode"
-            onPress={handleDemoSignIn}
-            variant="tertiary"
-            size="sm"
-          />
 
           {/* Terms */}
           <Text style={styles.terms}>

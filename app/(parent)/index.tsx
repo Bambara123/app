@@ -9,7 +9,7 @@ import { router } from 'expo-router';
 import {
   GreetingCard,
   RhythmCard,
-  SparkCard,
+  NoteCard,
   StatusCard,
 } from '../../src/components/home';
 import { ReminderCard } from '../../src/components/reminders';
@@ -52,8 +52,15 @@ export default function ParentHomeScreen() {
     router.push('/modals/settings');
   };
 
-  const handleSparkPress = () => {
-    router.push('/(parent)/chat');
+  const handleSaveNoteForChild = async (note: string) => {
+    if (profile?.id) {
+      try {
+        const { userService } = await import('../../src/services/firebase/firestore');
+        await userService.updateUser(profile.id, { noteForPartner: note });
+      } catch (error) {
+        console.log('Failed to save note:', error);
+      }
+    }
   };
 
   const handleReminderDone = async (reminderId: string) => {
@@ -121,8 +128,22 @@ export default function ParentHomeScreen() {
           />
         )}
 
-        {/* Spark a Thought */}
-        <SparkCard onPress={handleSparkPress} />
+        {/* Note from Child - Parent reads the note from child */}
+        <NoteCard
+          note={partnerNote}
+          partnerName={partner?.name || 'Family'}
+          isEditable={false}
+        />
+
+        {/* Note for Child - Parent writes note for child */}
+        <View style={{ marginTop: spacing[4] }}>
+          <NoteCard
+            note={profile?.noteForPartner || null}
+            partnerName={partner?.name || 'Family'}
+            isEditable={true}
+            onSaveNote={handleSaveNoteForChild}
+          />
+        </View>
 
         {/* Recent Reminder */}
         {recentReminder && (

@@ -28,6 +28,15 @@ export interface User {
   role: UserRole | null;
   connectedTo: string | null;
   
+  // Connection Code (unique 6-character code for pairing)
+  connectionCode: string;
+  
+  // Nickname - how the user wants to be called by partner (e.g., "Mom", "Dad", "Son")
+  nickname: string | null;
+  
+  // Profile setup completed flag
+  profileSetupComplete: boolean;
+  
   // Partner Communication
   noteForPartner: string | null;
   customGreeting: string | null;

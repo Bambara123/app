@@ -1,16 +1,24 @@
 // app/index.tsx
 // Entry point - redirects based on auth state
 
-import { useEffect } from 'react';
 import { Redirect } from 'expo-router';
 import { useAuthStore } from '../src/stores';
 
 export default function Index() {
-  const { user, isLoading } = useAuthStore();
+  const { user } = useAuthStore();
 
-  // If not authenticated, go to auth
+  // If not authenticated, go to login
   if (!user) {
     return <Redirect href="/(auth)/login" />;
+  }
+
+  // If user is already connected AND has a role, skip all onboarding
+  // This handles the case where another user connected to this user
+  if (user.connectedTo && user.role) {
+    if (user.role === 'parent') {
+      return <Redirect href="/(parent)" />;
+    }
+    return <Redirect href="/(child)" />;
   }
 
   // If no role selected, go to role selection
@@ -18,12 +26,12 @@ export default function Index() {
     return <Redirect href="/(auth)/role-selection" />;
   }
 
-  // If not connected to partner, go to partner connection
-  if (!user.connectedTo) {
-    return <Redirect href="/(auth)/partner-connection" />;
+  // If profile setup not complete, go to profile setup
+  if (!user.profileSetupComplete) {
+    return <Redirect href="/(auth)/profile-setup" />;
   }
 
-  // Redirect based on role
+  // Redirect based on role (user may or may not be connected)
   if (user.role === 'parent') {
     return <Redirect href="/(parent)" />;
   }

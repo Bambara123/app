@@ -42,6 +42,12 @@ export default function ParentChatScreen() {
     }
   };
 
+  const handleSendVoice = async (uri: string, duration: number) => {
+    if (profile?.id) {
+      await sendMessage(profile.id, 'voice', '', uri, duration);
+    }
+  };
+
   const renderMessage = ({ item }: { item: Message }) => (
     <ChatBubble
       message={item}
@@ -96,6 +102,7 @@ export default function ParentChatScreen() {
       <MessageInput
         onSendText={handleSendText}
         onSendImage={handleSendImage}
+        onSendVoice={handleSendVoice}
         isSending={isSending}
       />
     </SafeAreaView>

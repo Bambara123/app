@@ -85,6 +85,12 @@ export default function RootLayout() {
             presentation: 'modal',
           }}
         />
+        <Stack.Screen
+          name="modals/create-reminder"
+          options={{
+            presentation: 'modal',
+          }}
+        />
       </Stack>
     </GestureHandlerRootView>
   );

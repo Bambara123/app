@@ -15,6 +15,7 @@ const DEMO_USER: User = {
   profileImageUrl: null,
   role: null,
   connectedTo: null,
+  connectionCode: 'DEMO01',
   noteForPartner: null,
   customGreeting: null,
   batteryPercentage: 85,

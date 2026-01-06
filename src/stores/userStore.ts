@@ -47,7 +47,8 @@ interface UserState {
   // Actions
   initialize: (userId: string) => () => void;
   loadPartner: (partnerId: string) => Promise<void>;
-  connectToPartner: (partnerId: string, myRole: 'parent' | 'child') => Promise<void>;
+  connectByCode: (myUserId: string, myRole: 'parent' | 'child', partnerCode: string) => Promise<void>;
+  disconnect: () => Promise<void>;
   updateNote: (note: string) => Promise<void>;
   updateGreeting: (greeting: string) => Promise<void>;
   setDemoData: (user: User) => void;
@@ -165,11 +166,8 @@ export const useUserStore = create<UserState>((set, get) => ({
     }
   },
 
-  // Connect to partner
-  connectToPartner: async (partnerId: string, myRole: 'parent' | 'child') => {
-    const { profile } = get();
-    if (!profile) return;
-
+  // Connect to partner by their connection code
+  connectByCode: async (myUserId: string, myRole: 'parent' | 'child', partnerCode: string) => {
     if (isDemoMode) {
       set({
         connection: DEMO_CONNECTION,
@@ -181,26 +179,78 @@ export const useUserStore = create<UserState>((set, get) => ({
 
     set({ isLoading: true, error: null });
     try {
-      const { userService, connectionService } = await import('../services/firebase/firestore');
+      const { connectionService } = await import('../services/firebase/firestore');
 
-      const partnerUser = await userService.getUser(partnerId);
-      if (!partnerUser) {
-        throw new Error('Partner not found');
-      }
-
-      const parentId = myRole === 'parent' ? profile.id : partnerId;
-      const childId = myRole === 'child' ? profile.id : partnerId;
-
-      const connection = await connectionService.createConnection(
-        parentId,
-        childId,
-        profile.id
+      const { connection, partner } = await connectionService.connectByCode(
+        myUserId,
+        myRole,
+        partnerCode
       );
 
-      set({ connection, isLoading: false });
+      // Convert partner user to PartnerStatus
+      const now = new Date();
+      const lastInteraction = new Date(partner.lastInteraction);
+      const minutesSinceLastInteraction =
+        (now.getTime() - lastInteraction.getTime()) / 1000 / 60;
+
+      const partnerStatus: PartnerStatus = {
+        id: partner.id,
+        name: partner.name,
+        phone: partner.phone,
+        profileImageUrl: partner.profileImageUrl,
+        batteryPercentage: partner.batteryPercentage,
+        mood: partner.mood,
+        lastLocation: partner.lastLocation,
+        lastInteraction: partner.lastInteraction,
+        isOnline: minutesSinceLastInteraction < 5,
+        noteForPartner: partner.noteForPartner,
+        customGreeting: partner.customGreeting,
+      };
+
+      set({ 
+        connection, 
+        partner: partnerStatus,
+        partnerNote: partner.noteForPartner,
+        isLoading: false 
+      });
     } catch (error: any) {
       set({
         error: error.message || 'Failed to connect',
+        isLoading: false,
+      });
+      throw error;
+    }
+  },
+
+  // Disconnect from partner
+  disconnect: async () => {
+    const { profile } = get();
+    if (!profile) return;
+
+    if (isDemoMode) {
+      set({
+        connection: null,
+        partner: null,
+        partnerNote: null,
+        isLoading: false,
+      });
+      return;
+    }
+
+    set({ isLoading: true, error: null });
+    try {
+      const { connectionService } = await import('../services/firebase/firestore');
+      await connectionService.disconnect(profile.id);
+      
+      set({ 
+        connection: null, 
+        partner: null,
+        partnerNote: null,
+        isLoading: false 
+      });
+    } catch (error: any) {
+      set({
+        error: error.message || 'Failed to disconnect',
         isLoading: false,
       });
       throw error;

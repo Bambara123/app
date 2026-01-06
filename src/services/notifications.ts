@@ -13,6 +13,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -92,16 +94,25 @@ export const scheduleReminderNotification = async (
   body: string,
   triggerDate: Date
 ): Promise<string> => {
+  // Check if the trigger date is in the past
+  const now = new Date();
+  if (triggerDate <= now) {
+    // If in the past, schedule for 1 second from now
+    triggerDate = new Date(now.getTime() + 1000);
+  }
+
   const identifier = await Notifications.scheduleNotificationAsync({
     content: {
       title,
       body,
-      data: { type: 'reminder', reminderId } as NotificationData,
+      data: { type: 'reminder', reminderId } as Record<string, unknown>,
       sound: true,
       priority: Notifications.AndroidNotificationPriority.HIGH,
     },
     trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
       date: triggerDate,
+      channelId: Platform.OS === 'android' ? 'reminders' : undefined,
     },
   });
 
@@ -123,17 +134,39 @@ export const cancelAllNotifications = async (): Promise<void> => {
 // Setup notification response listener
 export const setupNotificationListeners = (): () => void => {
   // Handle notification received while app is foregrounded
+  // For reminders, automatically open the alarm modal
   const receivedSubscription = Notifications.addNotificationReceivedListener(
     (notification) => {
       console.log('Notification received:', notification);
+      const data = notification.request.content.data as unknown as NotificationData;
+      
+      // Auto-open full screen alarm for reminder notifications
+      if (data?.type === 'reminder' && data.reminderId) {
+        // Small delay to ensure app is ready
+        setTimeout(() => {
+          router.push({
+            pathname: '/modals/reminder-alarm',
+            params: { reminderId: data.reminderId },
+          });
+        }, 500);
+      }
+      
+      // Auto-open emergency alert
+      if (data?.type === 'emergency' && data.alertId) {
+        setTimeout(() => {
+          router.push({
+            pathname: '/modals/emergency-alert',
+            params: { alertId: data.alertId },
+          });
+        }, 500);
+      }
     }
   );
 
-  // Handle notification tap
+  // Handle notification tap (when user taps the notification)
   const responseSubscription =
     Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content
-        .data as NotificationData;
+      const data = response.notification.request.content.data as unknown as NotificationData;
 
       handleNotificationTap(data);
     });
@@ -184,7 +217,7 @@ export const sendLocalNotification = async (
     content: {
       title,
       body,
-      data,
+      data: data as Record<string, unknown> | undefined,
       sound: true,
     },
     trigger: null, // Send immediately

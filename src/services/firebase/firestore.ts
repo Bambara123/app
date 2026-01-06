@@ -42,6 +42,16 @@ import {
 // USER SERVICE
 // ============================================
 
+// Generate a unique 6-character connection code
+const generateConnectionCode = (): string => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluded confusing chars: 0, O, 1, I
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+};
+
 export const userService = {
   async getOrCreateUser(data: {
     id: string;
@@ -56,6 +66,22 @@ export const userService = {
       return this.convertUser(userSnap.data(), data.id);
     }
 
+    // Generate a unique connection code
+    let connectionCode = generateConnectionCode();
+    let isUnique = false;
+    let attempts = 0;
+    
+    // Ensure the code is unique (retry up to 10 times)
+    while (!isUnique && attempts < 10) {
+      const existingUser = await this.findUserByConnectionCode(connectionCode);
+      if (!existingUser) {
+        isUnique = true;
+      } else {
+        connectionCode = generateConnectionCode();
+        attempts++;
+      }
+    }
+
     // Create new user
     const newUser: Omit<User, 'id'> = {
       name: data.name,
@@ -64,6 +90,9 @@ export const userService = {
       profileImageUrl: data.profileImageUrl,
       role: null,
       connectedTo: null,
+      connectionCode,
+      nickname: null,
+      profileSetupComplete: false,
       noteForPartner: null,
       customGreeting: null,
       batteryPercentage: null,
@@ -93,10 +122,35 @@ export const userService = {
     return this.convertUser(userSnap.data(), userId);
   },
 
+  // Find a user by their unique connection code
+  async findUserByConnectionCode(code: string): Promise<User | null> {
+    const usersQuery = query(
+      collection(db, 'users'),
+      where('connectionCode', '==', code.toUpperCase()),
+      limit(1)
+    );
+
+    const snapshot = await getDocs(usersQuery);
+    
+    if (snapshot.empty) return null;
+    
+    const doc = snapshot.docs[0];
+    return this.convertUser(doc.data(), doc.id);
+  },
+
   async updateUser(userId: string, data: Partial<User>): Promise<void> {
     const userRef = doc(db, 'users', userId);
+    
+    // Filter out undefined values - Firestore doesn't accept undefined
+    const cleanData: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        cleanData[key] = value;
+      }
+    }
+    
     await updateDoc(userRef, {
-      ...data,
+      ...cleanData,
       updatedAt: serverTimestamp(),
     });
   },
@@ -146,6 +200,9 @@ export const userService = {
       profileImageUrl: data.profileImageUrl || null,
       role: data.role || null,
       connectedTo: data.connectedTo || null,
+      connectionCode: data.connectionCode || '',
+      nickname: data.nickname || null,
+      profileSetupComplete: data.profileSetupComplete ?? false,
       noteForPartner: data.noteForPartner || null,
       customGreeting: data.customGreeting || null,
       batteryPercentage: data.batteryPercentage ?? null,
@@ -169,6 +226,55 @@ export const userService = {
 // ============================================
 
 export const connectionService = {
+  // Connect to a partner using their connection code
+  async connectByCode(
+    myUserId: string,
+    myRole: UserRole,
+    partnerCode: string
+  ): Promise<{ connection: Connection; partner: User }> {
+    // Find the partner by their connection code
+    const partner = await userService.findUserByConnectionCode(partnerCode);
+    
+    if (!partner) {
+      throw new Error('Invalid code. No user found with this connection code.');
+    }
+
+    // Can't connect to yourself
+    if (partner.id === myUserId) {
+      throw new Error('You cannot connect to yourself.');
+    }
+
+    // Check if partner has a role set
+    if (!partner.role) {
+      throw new Error('This user has not selected their role yet. Ask them to complete their profile first.');
+    }
+
+    // Validate role compatibility - parent must connect with child and vice versa
+    if (myRole === partner.role) {
+      const roleName = myRole === 'parent' ? 'Parent' : 'Adult Child';
+      throw new Error(`Both users are ${roleName}s. You need to connect with a ${myRole === 'parent' ? 'Child' : 'Parent'}.`);
+    }
+
+    // Check if either user is already connected
+    const myUser = await userService.getUser(myUserId);
+    if (myUser?.connectedTo) {
+      throw new Error('You are already connected to someone. Please disconnect first in Settings.');
+    }
+
+    if (partner.connectedTo) {
+      throw new Error(`${partner.name} is already connected to someone else.`);
+    }
+
+    // Determine parent and child IDs based on roles
+    const parentId = myRole === 'parent' ? myUserId : partner.id;
+    const childId = myRole === 'child' ? myUserId : partner.id;
+
+    // Create the connection
+    const connection = await this.createConnection(parentId, childId, myUserId);
+
+    return { connection, partner };
+  },
+
   async createConnection(
     parentId: string,
     childId: string,
@@ -198,6 +304,26 @@ export const connectionService = {
     };
   },
 
+  // Disconnect from partner
+  async disconnect(userId: string): Promise<void> {
+    const connection = await this.findConnectionByUser(userId);
+    
+    if (!connection) {
+      throw new Error('No active connection found.');
+    }
+
+    // Update connection status
+    const connectionRef = doc(db, 'connections', connection.id);
+    await updateDoc(connectionRef, {
+      status: 'disconnected',
+      updatedAt: serverTimestamp(),
+    });
+
+    // Clear connectedTo for both users
+    await userService.updateUser(connection.parentId, { connectedTo: null });
+    await userService.updateUser(connection.childId, { connectedTo: null });
+  },
+
   async findConnectionByUser(userId: string): Promise<Connection | null> {
     const parentQuery = query(
       collection(db, 'connections'),
@@ -219,13 +345,13 @@ export const connectionService = {
     ]);
 
     if (!parentSnap.empty) {
-      const doc = parentSnap.docs[0];
-      return this.convertConnection(doc.data(), doc.id);
+      const docSnap = parentSnap.docs[0];
+      return this.convertConnection(docSnap.data(), docSnap.id);
     }
 
     if (!childSnap.empty) {
-      const doc = childSnap.docs[0];
-      return this.convertConnection(doc.data(), doc.id);
+      const docSnap = childSnap.docs[0];
+      return this.convertConnection(docSnap.data(), docSnap.id);
     }
 
     return null;
@@ -291,8 +417,17 @@ export const reminderService = {
     data: Partial<Reminder>
   ): Promise<void> {
     const reminderRef = doc(db, 'reminders', reminderId);
+    
+    // Filter out undefined values - Firestore doesn't accept undefined
+    const cleanData: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        cleanData[key] = value;
+      }
+    }
+    
     await updateDoc(reminderRef, {
-      ...data,
+      ...cleanData,
       updatedAt: serverTimestamp(),
     });
   },

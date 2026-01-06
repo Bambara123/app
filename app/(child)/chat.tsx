@@ -41,6 +41,12 @@ export default function ChildChatScreen() {
     }
   };
 
+  const handleSendVoice = async (uri: string, duration: number) => {
+    if (profile?.id) {
+      await sendMessage(profile.id, 'voice', '', uri, duration);
+    }
+  };
+
   const handleSuggestActivity = () => {
     // Could show a modal with activity suggestions
     if (profile?.id) {
@@ -105,6 +111,7 @@ export default function ChildChatScreen() {
       <MessageInput
         onSendText={handleSendText}
         onSendImage={handleSendImage}
+        onSendVoice={handleSendVoice}
         onSuggestActivity={handleSuggestActivity}
         isSending={isSending}
       />
