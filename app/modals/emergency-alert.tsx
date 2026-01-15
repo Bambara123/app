@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Button } from '../../src/components/common';
-import { useEmergencyStore, useUserStore } from '../../src/stores';
+import { useEmergencyStore, useUserStore, useAuthStore } from '../../src/stores';
 import { colors, spacing, typography, radius } from '../../src/constants';
 
 // Conditionally import MapView only on native platforms
@@ -23,7 +23,11 @@ export default function EmergencyAlertScreen() {
   const { alertId } = useLocalSearchParams<{ alertId: string }>();
   const { activeAlerts, acknowledgeAlert, resolveAlert } = useEmergencyStore();
   const { partner } = useUserStore();
+  const { user } = useAuthStore();
   const [acknowledged, setAcknowledged] = useState(false);
+
+  // Get display name for partner (use partnerCallName if set)
+  const partnerDisplayName = user?.partnerCallName || partner?.name || 'Your parent';
 
   const alert = activeAlerts.find((a) => a.id === alertId);
 
@@ -126,7 +130,7 @@ export default function EmergencyAlertScreen() {
                   latitude: alert.location.latitude,
                   longitude: alert.location.longitude,
                 }}
-                title={partner?.name || 'Location'}
+                title={partnerDisplayName}
               />
             )}
           </MapView>
@@ -151,7 +155,7 @@ export default function EmergencyAlertScreen() {
         </View>
         <Text style={styles.title}>EMERGENCY ALERT</Text>
         <Text style={styles.subtitle}>
-          {partner?.name || 'Your parent'} needs help!
+          {partnerDisplayName} needs your help!
         </Text>
       </View>
 
@@ -163,7 +167,7 @@ export default function EmergencyAlertScreen() {
         {/* Time */}
         <Text style={styles.timeText}>
           Alert received at{' '}
-          {new Date(alert.triggeredAt).toLocaleTimeString([], {
+          {new Date(alert.createdAt).toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit',
           })}
@@ -172,14 +176,28 @@ export default function EmergencyAlertScreen() {
         {/* Actions */}
         <View style={styles.actions}>
           {!acknowledged ? (
-            <Button
-              title="I'm on it!"
-              onPress={handleAcknowledge}
-              variant="danger"
-              size="lg"
-              fullWidth
-              icon={<Ionicons name="hand-right" size={24} color={colors.neutral.white} />}
-            />
+            <>
+              <Button
+                title="I'm on it!"
+                onPress={handleAcknowledge}
+                variant="danger"
+                size="lg"
+                fullWidth
+                icon={<Ionicons name="hand-right" size={24} color={colors.neutral.white} />}
+              />
+              
+              {/* Show View on Map even before acknowledging */}
+              {alert.location && (
+                <Button
+                  title="View on Map"
+                  onPress={handleOpenMaps}
+                  variant="outline"
+                  size="lg"
+                  fullWidth
+                  icon={<Ionicons name="map-outline" size={24} color={colors.danger.main} />}
+                />
+              )}
+            </>
           ) : (
             <>
               <Button
@@ -191,7 +209,7 @@ export default function EmergencyAlertScreen() {
                 icon={<Ionicons name="call" size={24} color={colors.neutral.white} />}
               />
 
-              {alert.location && Platform.OS !== 'web' && (
+              {alert.location && (
                 <Button
                   title="Open in Maps"
                   onPress={handleOpenMaps}

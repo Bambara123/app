@@ -66,16 +66,22 @@ export const registerForPushNotifications = async (): Promise<string | null> => 
       await Notifications.setNotificationChannelAsync('reminders', {
         name: 'Reminders',
         importance: Notifications.AndroidImportance.HIGH,
-        sound: 'default',
+        sound: 'reminder.wav', // Custom alarm sound
         vibrationPattern: [0, 500, 500, 500],
+        enableVibrate: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: true, // Bypass Do Not Disturb for alarms
       });
 
       await Notifications.setNotificationChannelAsync('emergency', {
         name: 'Emergency',
         importance: Notifications.AndroidImportance.MAX,
-        sound: 'default',
+        sound: 'reminder.wav', // Use same alarm sound for emergencies
         vibrationPattern: [0, 1000, 500, 1000],
         lightColor: '#EF5350',
+        enableVibrate: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: true, // Always break through DND for emergencies
       });
     }
 
@@ -87,7 +93,7 @@ export const registerForPushNotifications = async (): Promise<string | null> => 
   }
 };
 
-// Schedule local notification for reminder
+// Schedule local notification for reminder with custom alarm sound
 export const scheduleReminderNotification = async (
   reminderId: string,
   title: string,
@@ -106,8 +112,14 @@ export const scheduleReminderNotification = async (
       title,
       body,
       data: { type: 'reminder', reminderId } as Record<string, unknown>,
-      sound: true,
+      // Use custom alarm sound (max 30 seconds on iOS)
+      // Falls back to default if file not found
+      sound: 'reminder.wav',
       priority: Notifications.AndroidNotificationPriority.HIGH,
+      // iOS 15+ time sensitive - breaks through Focus/DND
+      ...(Platform.OS === 'ios' && { 
+        interruptionLevel: 'timeSensitive' as const,
+      }),
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -207,18 +219,27 @@ const handleNotificationTap = (data: NotificationData): void => {
   }
 };
 
-// Send local notification immediately (for testing)
+// Send local notification immediately (for alerts to caregiver)
 export const sendLocalNotification = async (
   title: string,
   body: string,
   data?: NotificationData
 ): Promise<void> => {
+  // Determine if this is a reminder-related notification that needs alarm sound
+  const isReminderAlert = data?.type?.includes('reminder');
+  
   await Notifications.scheduleNotificationAsync({
     content: {
       title,
       body,
       data: data as Record<string, unknown> | undefined,
-      sound: true,
+      // Use alarm sound for reminder alerts, default for others
+      sound: isReminderAlert ? 'reminder.wav' : true,
+      priority: Notifications.AndroidNotificationPriority.HIGH,
+      // iOS 15+ time sensitive for urgent notifications
+      ...(Platform.OS === 'ios' && { 
+        interruptionLevel: 'timeSensitive' as const,
+      }),
     },
     trigger: null, // Send immediately
   });

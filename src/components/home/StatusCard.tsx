@@ -40,7 +40,7 @@ export const StatusCard: React.FC<StatusCardProps> = ({
   return (
     <Card variant="elevated" style={styles.container}>
       <Text style={styles.label}>
-        {isParent ? `Status of ${partnerName}` : `${partnerName} is doing well.`}
+        {isParent ? 'My Status' : `${partnerName}'s Status`}
       </Text>
 
       <View style={styles.statusRow}>

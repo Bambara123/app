@@ -19,7 +19,7 @@ import { Button, Input } from '../../src/components/common';
 import { useAuthStore } from '../../src/stores';
 import { colors, spacing, typography, radius } from '../../src/constants';
 
-// Nickname suggestions based on role
+// Partner call name suggestions based on role
 const PARENT_NICKNAMES = ['Mom', 'Dad', 'Grandma', 'Grandpa', 'Nana', 'Papa'];
 const CHILD_NICKNAMES = ['Son', 'Daughter', 'Grandson', 'Granddaughter'];
 
@@ -31,7 +31,7 @@ export default function ProfileSetupScreen() {
   const role = user?.role || paramRole;
 
   const [phone, setPhone] = useState(user?.phone || '');
-  const [nickname, setNickname] = useState(user?.nickname || '');
+  const [partnerCallName, setPartnerCallName] = useState(user?.partnerCallName || '');
   const [isLoading, setIsLoading] = useState(false);
 
   // Check if user already completed profile setup - skip this screen
@@ -47,34 +47,22 @@ export default function ProfileSetupScreen() {
     }
   }, [user?.profileSetupComplete, user?.connectedTo, user?.role]);
 
-  const suggestions = role === 'parent' ? PARENT_NICKNAMES : CHILD_NICKNAMES;
-
   const handleBack = () => {
     router.back();
   };
 
-  const handleSelectNickname = (name: string) => {
-    setNickname(name);
-  };
-
   const handleContinue = async () => {
-    // Validate phone number (basic validation)
-    if (phone.trim() && phone.trim().length < 7) {
-      Alert.alert('Invalid Phone', 'Please enter a valid phone number');
-      return;
-    }
-
-    // Nickname is optional but recommended
-    if (!nickname.trim()) {
-      Alert.alert(
-        'No Nickname',
-        'Would you like to continue without setting a nickname? Your partner will see your name instead.',
-        [
-          { text: 'Go Back', style: 'cancel' },
-          { text: 'Continue', onPress: () => saveAndNavigate() },
-        ]
-      );
-      return;
+    // Validate phone number with country code
+    if (phone.trim()) {
+      const cleanPhone = phone.trim();
+      if (!cleanPhone.startsWith('+')) {
+        Alert.alert('Country Code Required', 'Please include the country code starting with + (e.g., +1 for US)');
+        return;
+      }
+      if (cleanPhone.length < 10) {
+        Alert.alert('Invalid Phone', 'Please enter a valid phone number with country code');
+        return;
+      }
     }
 
     await saveAndNavigate();
@@ -85,7 +73,7 @@ export default function ProfileSetupScreen() {
     try {
       const updateData: any = {
         phone: phone.trim() || null,
-        nickname: nickname.trim() || null,
+        partnerCallName: partnerCallName.trim() || null,
         profileSetupComplete: true,
       };
 
@@ -103,6 +91,14 @@ export default function ProfileSetupScreen() {
       useAuthStore.setState({
         user: user ? { ...user, ...updateData } : null,
       });
+
+      // Request necessary permissions after signup
+      try {
+        const { requestPermissionsWithExplanation } = await import('../../src/services/permissions');
+        await requestPermissionsWithExplanation();
+      } catch (permError) {
+        console.log('Permissions request skipped:', permError);
+      }
 
       // Navigate to partner connection
       router.push('/(auth)/partner-connection');
@@ -144,50 +140,57 @@ export default function ProfileSetupScreen() {
             Help your {role === 'parent' ? 'caregiver' : 'parent'} connect with you
           </Text>
 
-          {/* Phone Number Input */}
+          {/* Phone Number Input with Country Code */}
           <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>Phone Number (Optional)</Text>
+            <Text style={styles.inputLabel}>Phone Number with Country Code (Optional)</Text>
             <Input
-              placeholder="Enter your phone number"
+              placeholder="+1 234 567 8900"
               value={phone}
-              onChangeText={setPhone}
+              onChangeText={(text) => {
+                // Ensure phone starts with + for country code
+                if (text.length > 0 && !text.startsWith('+')) {
+                  setPhone('+' + text);
+                } else {
+                  setPhone(text);
+                }
+              }}
               keyboardType="phone-pad"
               icon="call-outline"
             />
             <Text style={styles.inputHint}>
-              This helps your family reach you in emergencies
+              Include country code (e.g., +1 for US, +44 for UK, +94 for Sri Lanka)
             </Text>
           </View>
 
-          {/* Nickname Input */}
+          {/* Partner Call Name Input */}
           <View style={styles.inputSection}>
             <Text style={styles.inputLabel}>
-              What should your {role === 'parent' ? 'caregiver' : 'parent'} call you?
+              What do you call your {role === 'parent' ? 'caregiver' : 'parent'}?
             </Text>
             <Input
-              placeholder={role === 'parent' ? 'e.g., Mom, Dad, Grandma' : 'e.g., Son, Daughter'}
-              value={nickname}
-              onChangeText={setNickname}
-              icon="heart-outline"
+              placeholder={role === 'parent' ? 'e.g., Son, Daughter, Alex' : 'e.g., Mom, Dad, Grandma'}
+              value={partnerCallName}
+              onChangeText={setPartnerCallName}
+              icon="people-outline"
             />
 
-            {/* Nickname Suggestions */}
+            {/* Partner Call Name Suggestions */}
             <View style={styles.suggestionsContainer}>
               <Text style={styles.suggestionsLabel}>Quick picks:</Text>
               <View style={styles.suggestions}>
-                {suggestions.map((name) => (
+                {(role === 'parent' ? CHILD_NICKNAMES : PARENT_NICKNAMES).map((name) => (
                   <TouchableOpacity
                     key={name}
                     style={[
                       styles.suggestionChip,
-                      nickname === name && styles.suggestionChipActive,
+                      partnerCallName === name && styles.suggestionChipActive,
                     ]}
-                    onPress={() => handleSelectNickname(name)}
+                    onPress={() => setPartnerCallName(name)}
                   >
                     <Text
                       style={[
                         styles.suggestionText,
-                        nickname === name && styles.suggestionTextActive,
+                        partnerCallName === name && styles.suggestionTextActive,
                       ]}
                     >
                       {name}
@@ -196,6 +199,9 @@ export default function ProfileSetupScreen() {
                 ))}
               </View>
             </View>
+            <Text style={styles.inputHint}>
+              This will be used throughout the app (e.g., "{partnerCallName || (role === 'parent' ? 'Son' : 'Mom')}'s battery")
+            </Text>
           </View>
 
           {/* Continue Button */}

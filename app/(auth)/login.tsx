@@ -132,25 +132,25 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       // Firebase Auth
-      const { registerWithEmail, signInWithEmail } = await import(
-        '../../src/services/firebase/auth'
-      );
+        const { registerWithEmail, signInWithEmail } = await import(
+          '../../src/services/firebase/auth'
+        );
 
-      let user;
-      if (isLogin) {
-        // Sign in
-        user = await signInWithEmail(email.trim(), password);
-      } else {
-        // Register
-        user = await registerWithEmail(email.trim(), password, name.trim());
-      }
+        let user;
+        if (isLogin) {
+          // Sign in
+          user = await signInWithEmail(email.trim(), password);
+        } else {
+          // Register
+          user = await registerWithEmail(email.trim(), password, name.trim());
+        }
 
-      if (user) {
-        useAuthStore.setState({
-          user,
-          isLoading: false,
-          isInitialized: true,
-        });
+        if (user) {
+          useAuthStore.setState({
+            user,
+            isLoading: false,
+            isInitialized: true,
+          });
       }
 
       // Navigate to role selection

@@ -34,12 +34,18 @@ export interface User {
   // Nickname - how the user wants to be called by partner (e.g., "Mom", "Dad", "Son")
   nickname: string | null;
   
+  // What the user calls their partner (e.g., "Mom", "Dad", "Son")
+  partnerCallName: string | null;
+  
   // Profile setup completed flag
   profileSetupComplete: boolean;
   
   // Partner Communication
   noteForPartner: string | null;
   customGreeting: string | null;
+  
+  // Current activity/status (Rhythm)
+  rhythm: string | null;
   
   // Status (Parent only)
   batteryPercentage: number | null;
@@ -76,6 +82,7 @@ export interface PartnerStatus {
   isOnline: boolean;
   noteForPartner: string | null;
   customGreeting: string | null;
+  rhythm: string | null;
 }
 
 // ============================================
@@ -124,6 +131,7 @@ export interface Reminder {
   completedAt: Date | null;
   snoozedUntil: Date | null;
   snoozeCount: number;
+  missCount: number;
   customAlarmAudioUrl: string | null;
   followUpMinutes: number;
   notificationId: string | null;
@@ -250,7 +258,9 @@ export type NotificationType =
   | 'emergency'
   | 'chat_message'
   | 'reminder_done'
-  | 'reminder_missed';
+  | 'reminder_snoozed'
+  | 'reminder_missed'
+  | 'reminder_missed_urgent';
 
 export interface NotificationData {
   type: NotificationType;

@@ -21,7 +21,6 @@ interface MessageInputProps {
   onSendText: (text: string) => void;
   onSendImage: (uri: string) => void;
   onSendVoice?: (uri: string, duration: number) => void;
-  onSuggestActivity?: () => void;
   isSending?: boolean;
 }
 
@@ -29,7 +28,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   onSendText,
   onSendImage,
   onSendVoice,
-  onSuggestActivity,
   isSending = false,
 }) => {
   const [message, setMessage] = useState('');
@@ -231,23 +229,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={100}
     >
-      {/* Suggest Activity Button */}
-      {onSuggestActivity && (
-        <TouchableOpacity
-          onPress={onSuggestActivity}
-          style={styles.suggestButton}
-        >
-          <Ionicons name="sparkles" size={16} color={colors.primary[500]} />
-          <Ionicons
-            name="add"
-            size={14}
-            color={colors.primary[500]}
-            style={styles.addIcon}
-          />
-          <Text style={styles.suggestText}>SUGGEST AN ACTIVITY</Text>
-        </TouchableOpacity>
-      )}
-
       <View style={styles.container}>
         {/* Attachment buttons */}
         <TouchableOpacity
@@ -308,29 +289,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({
 import { Text } from 'react-native';
 
 const styles = StyleSheet.create({
-  suggestButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    paddingVertical: spacing[2],
-    paddingHorizontal: spacing[4],
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.primary[500],
-    marginBottom: spacing[3],
-    backgroundColor: colors.neutral.white,
-  },
-  addIcon: {
-    marginLeft: -4,
-    marginRight: spacing[2],
-  },
-  suggestText: {
-    fontSize: typography.fontSize.xs,
-    fontWeight: '600',
-    color: colors.primary[500],
-    letterSpacing: 0.5,
-  },
   container: {
     flexDirection: 'row',
     alignItems: 'flex-end',

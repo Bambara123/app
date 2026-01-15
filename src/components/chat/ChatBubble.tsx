@@ -21,51 +21,87 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
   onImagePress,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isPreloaded, setIsPreloaded] = useState(false);
   const [playbackProgress, setPlaybackProgress] = useState(0);
   const soundRef = useRef<Audio.Sound | null>(null);
   const progressAnim = useRef(new Animated.Value(0)).current;
 
-  // Cleanup on unmount
+  // Preload audio for voice messages
   useEffect(() => {
+    if (message.type === 'voice' && message.mediaUrl && !isPreloaded) {
+      preloadAudio();
+    }
+    
     return () => {
       if (soundRef.current) {
         soundRef.current.unloadAsync();
       }
     };
-  }, []);
+  }, [message.mediaUrl, message.type]);
 
-  const handleVoicePlay = async () => {
+  const preloadAudio = async () => {
     if (!message.mediaUrl) return;
-
+    
     try {
-      // If already playing, stop
-      if (isPlaying && soundRef.current) {
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
-        setIsPlaying(false);
-        setPlaybackProgress(0);
-        progressAnim.setValue(0);
-        return;
-      }
-
       // Set audio mode
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
         staysActiveInBackground: false,
       });
 
-      // Load and play
+      // Preload the sound
       const { sound } = await Audio.Sound.createAsync(
         { uri: message.mediaUrl },
-        { shouldPlay: true },
+        { shouldPlay: false, progressUpdateIntervalMillis: 100 },
         onPlaybackStatusUpdate
       );
       soundRef.current = sound;
+      setIsPreloaded(true);
+    } catch (error) {
+      console.log('Error preloading voice message:', error);
+    }
+  };
+
+  const handleVoicePlay = async () => {
+    if (!message.mediaUrl) return;
+
+    try {
+      // If already playing, pause
+      if (isPlaying && soundRef.current) {
+        await soundRef.current.pauseAsync();
+        setIsPlaying(false);
+        return;
+      }
+
+      // If preloaded, just play
+      if (isPreloaded && soundRef.current) {
+        await soundRef.current.playAsync();
+        setIsPlaying(true);
+        return;
+      }
+
+      // Not preloaded, load and play
+      setIsLoading(true);
+      
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+      });
+
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: message.mediaUrl },
+        { shouldPlay: true, progressUpdateIntervalMillis: 100 },
+        onPlaybackStatusUpdate
+      );
+      soundRef.current = sound;
+      setIsPreloaded(true);
+      setIsLoading(false);
       setIsPlaying(true);
     } catch (error) {
       console.log('Error playing voice message:', error);
       setIsPlaying(false);
+      setIsLoading(false);
     }
   };
 
@@ -75,9 +111,9 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
         setIsPlaying(false);
         setPlaybackProgress(0);
         progressAnim.setValue(0);
+        // Reset to beginning instead of unloading (for quick replay)
         if (soundRef.current) {
-          soundRef.current.unloadAsync();
-          soundRef.current = null;
+          soundRef.current.setPositionAsync(0);
         }
       } else if (status.isPlaying && status.durationMillis) {
         const progress = status.positionMillis / status.durationMillis;
@@ -115,12 +151,23 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
             onPress={handleVoicePlay}
             style={styles.voiceContainer}
             activeOpacity={0.7}
+            disabled={isLoading}
           >
-            <Ionicons
-              name={isPlaying ? 'pause-circle' : 'play-circle'}
-              size={36}
-              color={isSent ? colors.neutral.white : colors.primary[500]}
-            />
+            {isLoading ? (
+              <View style={styles.loadingIcon}>
+                <Ionicons
+                  name="hourglass-outline"
+                  size={28}
+                  color={isSent ? colors.neutral.white : colors.primary[500]}
+                />
+              </View>
+            ) : (
+              <Ionicons
+                name={isPlaying ? 'pause-circle' : 'play-circle'}
+                size={36}
+                color={isSent ? colors.neutral.white : colors.primary[500]}
+              />
+            )}
             <View style={styles.voiceWaveContainer}>
               <View style={styles.voiceWave}>
                 {[...Array(12)].map((_, i) => (
@@ -240,8 +287,8 @@ const styles = StyleSheet.create({
     color: colors.chat.receivedText,
   },
   image: {
-    width: 200,
-    height: 200,
+    width: 240,
+    height: 240,
     borderRadius: 16,
   },
   sticker: {
@@ -252,6 +299,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minWidth: 180,
+  },
+  loadingIcon: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   voiceWaveContainer: {
     flex: 1,

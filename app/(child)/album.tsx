@@ -20,11 +20,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { VaultCard } from '../../src/components/album';
-import { useAlbumStore, useUserStore } from '../../src/stores';
+import { useAlbumStore, useUserStore, useAuthStore } from '../../src/stores';
 import { colors, spacing, typography, radius } from '../../src/constants';
 
 export default function ChildAlbumScreen() {
   const { profile, partner, connection } = useUserStore();
+  const { user } = useAuthStore();
   const { images, initialize, uploadImage, isUploading, setSelectedImage } = useAlbumStore();
   
   // Note modal state
@@ -136,11 +137,14 @@ export default function ChildAlbumScreen() {
     }
   };
 
+  // Get display name for partner (use partnerCallName if set)
+  const partnerDisplayName = user?.partnerCallName || partner?.name || 'Parent';
+
   const getUploaderInfo = (uploadedBy: string) => {
     if (uploadedBy === profile?.id) {
-      return { name: profile.name || 'Me', role: 'child' as const };
+      return { name: 'Me', role: 'child' as const };
     }
-    return { name: partner?.name || 'Parent', role: 'parent' as const };
+    return { name: partnerDisplayName, role: 'parent' as const };
   };
 
   return (

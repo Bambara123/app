@@ -23,6 +23,7 @@ const DEMO_PARTNER: PartnerStatus = {
   isOnline: true,
   noteForPartner: 'Had a great breakfast today! 🥞',
   customGreeting: 'Good Morning, sweetie!',
+  rhythm: 'Relaxing in the garden 🌷',
 };
 
 const DEMO_CONNECTION: Connection = {
@@ -154,6 +155,7 @@ export const useUserStore = create<UserState>((set, get) => ({
           isOnline: minutesSinceLastInteraction < 5,
           noteForPartner: partnerUser.noteForPartner,
           customGreeting: partnerUser.customGreeting,
+          rhythm: partnerUser.rhythm,
         };
 
         set({
@@ -205,6 +207,7 @@ export const useUserStore = create<UserState>((set, get) => ({
         isOnline: minutesSinceLastInteraction < 5,
         noteForPartner: partner.noteForPartner,
         customGreeting: partner.customGreeting,
+        rhythm: partner.rhythm,
       };
 
       set({ 

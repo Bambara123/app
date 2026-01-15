@@ -11,18 +11,15 @@ import {
   Platform,
   Alert,
   KeyboardAvoidingView,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import * as DocumentPicker from 'expo-document-picker';
-import { Audio } from 'expo-av';
 import { Input, Button } from '../../src/components/common';
-import { useReminderStore, useUserStore } from '../../src/stores';
+import { useReminderStore, useUserStore, useAuthStore } from '../../src/stores';
 import { colors, spacing, typography, radius } from '../../src/constants';
-import { ReminderLabel, ReminderRepeat, Reminder } from '../../src/types';
+import { ReminderLabel, ReminderRepeat } from '../../src/types';
 
 const LABELS: { value: ReminderLabel; label: string; icon: string; color: string }[] = [
   { value: 'medicine', label: 'Medicine', icon: 'medical', color: '#E85A6B' },
@@ -41,9 +38,13 @@ const REPEAT_OPTIONS: { value: ReminderRepeat; label: string }[] = [
 export default function CreateReminderModal() {
   const params = useLocalSearchParams<{ reminderId?: string }>();
   const { profile, partner } = useUserStore();
+  const { user } = useAuthStore();
   const { createReminder, updateReminder, selectedReminder, setSelectedReminder, isLoading } = useReminderStore();
 
   const isEditing = !!params.reminderId || !!selectedReminder;
+  
+  // Get display name for partner (use partnerCallName if set)
+  const partnerDisplayName = user?.partnerCallName || partner?.name || 'Parent';
 
   // Form state
   const [title, setTitle] = useState('');
@@ -52,13 +53,6 @@ export default function CreateReminderModal() {
   const [selectedLabel, setSelectedLabel] = useState<ReminderLabel>('medicine');
   const [selectedRepeat, setSelectedRepeat] = useState<ReminderRepeat>('none');
   const [followUpMinutes, setFollowUpMinutes] = useState('10');
-
-  // Custom audio state
-  const [customAudioUri, setCustomAudioUri] = useState<string | null>(null);
-  const [customAudioName, setCustomAudioName] = useState<string | null>(null);
-  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
-  const [isUploadingAudio, setIsUploadingAudio] = useState(false);
-  const [previewSound, setPreviewSound] = useState<Audio.Sound | null>(null);
 
   // Date/Time picker state
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -74,88 +68,8 @@ export default function CreateReminderModal() {
       setSelectedLabel(selectedReminder.label);
       setSelectedRepeat(selectedReminder.repeat);
       setFollowUpMinutes(String(selectedReminder.followUpMinutes));
-      if (selectedReminder.customAlarmAudioUrl) {
-        setCustomAudioUri(selectedReminder.customAlarmAudioUrl);
-        setCustomAudioName('Custom ringtone');
-      }
     }
   }, [selectedReminder]);
-
-  // Cleanup audio on unmount
-  useEffect(() => {
-    return () => {
-      if (previewSound) {
-        previewSound.unloadAsync();
-      }
-    };
-  }, [previewSound]);
-
-  // Pick audio file
-  const handlePickAudio = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'audio/*',
-        copyToCacheDirectory: true,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        setCustomAudioUri(asset.uri);
-        setCustomAudioName(asset.name);
-      }
-    } catch (error) {
-      console.log('Error picking audio:', error);
-      Alert.alert('Error', 'Failed to pick audio file');
-    }
-  };
-
-  // Preview audio
-  const handlePreviewAudio = async () => {
-    if (!customAudioUri) return;
-
-    try {
-      if (isPlayingPreview && previewSound) {
-        await previewSound.stopAsync();
-        await previewSound.unloadAsync();
-        setPreviewSound(null);
-        setIsPlayingPreview(false);
-        return;
-      }
-
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-      });
-
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: customAudioUri },
-        { shouldPlay: true },
-        (status: any) => {
-          if (status.didJustFinish) {
-            setIsPlayingPreview(false);
-            sound.unloadAsync();
-            setPreviewSound(null);
-          }
-        }
-      );
-      setPreviewSound(sound);
-      setIsPlayingPreview(true);
-    } catch (error) {
-      console.log('Error previewing audio:', error);
-      Alert.alert('Error', 'Failed to play audio preview');
-    }
-  };
-
-  // Remove custom audio
-  const handleRemoveAudio = async () => {
-    if (previewSound) {
-      await previewSound.stopAsync();
-      await previewSound.unloadAsync();
-      setPreviewSound(null);
-    }
-    setCustomAudioUri(null);
-    setCustomAudioName(null);
-    setIsPlayingPreview(false);
-  };
 
   const handleClose = () => {
     setSelectedReminder(null);
@@ -237,35 +151,6 @@ export default function CreateReminderModal() {
     if (!validateForm()) return;
 
     try {
-      // Stop preview if playing
-      if (previewSound) {
-        await previewSound.stopAsync();
-        await previewSound.unloadAsync();
-        setPreviewSound(null);
-        setIsPlayingPreview(false);
-      }
-
-      let audioUrl: string | null = null;
-
-      // Upload custom audio if selected and it's a new local file
-      if (customAudioUri && !customAudioUri.startsWith('http')) {
-        setIsUploadingAudio(true);
-        try {
-          const { storageService } = await import('../../src/services/firebase/storage');
-          audioUrl = await storageService.uploadReminderAudio(
-            profile!.id,
-            customAudioUri
-          );
-        } catch (uploadError) {
-          console.log('Audio upload error:', uploadError);
-          // Continue without custom audio
-        }
-        setIsUploadingAudio(false);
-      } else if (customAudioUri?.startsWith('http')) {
-        // Keep existing URL if editing
-        audioUrl = customAudioUri;
-      }
-
       const reminderData = {
         title: title.trim(),
         description: description.trim() || undefined,
@@ -273,7 +158,6 @@ export default function CreateReminderModal() {
         repeat: selectedRepeat,
         label: selectedLabel,
         followUpMinutes: parseInt(followUpMinutes) || 10,
-        customAlarmAudioUrl: audioUrl,
       };
 
       if (isEditing && selectedReminder) {
@@ -281,12 +165,11 @@ export default function CreateReminderModal() {
         Alert.alert('Success', 'Reminder updated successfully!');
       } else {
         await createReminder(profile!.id, partner!.id, reminderData);
-        Alert.alert('Success', `Reminder created for ${partner?.name || 'your parent'}!`);
+        Alert.alert('Success', `Reminder created for ${partnerDisplayName}!`);
       }
       
       handleClose();
     } catch (error: any) {
-      setIsUploadingAudio(false);
       Alert.alert('Error', error.message || 'Failed to save reminder');
     }
   };
@@ -320,7 +203,7 @@ export default function CreateReminderModal() {
               <View style={styles.avatar}>
                 <Ionicons name="person" size={24} color={colors.primary[500]} />
               </View>
-              <Text style={styles.forName}>{partner?.name || 'Parent'}</Text>
+              <Text style={styles.forName}>{partnerDisplayName}</Text>
             </View>
           </View>
 
@@ -437,58 +320,6 @@ export default function CreateReminderModal() {
                 </Text>
               </TouchableOpacity>
             ))}
-          </View>
-
-          {/* Custom Ringtone */}
-          <Text style={styles.sectionLabel}>Custom Alarm Sound (optional)</Text>
-          <View style={styles.audioSection}>
-            {customAudioUri ? (
-              <View style={styles.audioSelected}>
-                <View style={styles.audioInfo}>
-                  <Ionicons name="musical-note" size={20} color={colors.primary[500]} />
-                  <Text style={styles.audioName} numberOfLines={1}>
-                    {customAudioName || 'Custom audio'}
-                  </Text>
-                </View>
-                <View style={styles.audioActions}>
-                  <TouchableOpacity
-                    onPress={handlePreviewAudio}
-                    style={styles.audioActionButton}
-                  >
-                    <Ionicons
-                      name={isPlayingPreview ? 'stop' : 'play'}
-                      size={20}
-                      color={colors.primary[500]}
-                    />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={handleRemoveAudio}
-                    style={styles.audioActionButton}
-                  >
-                    <Ionicons name="trash-outline" size={20} color={colors.danger.main} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={styles.audioPickerButton}
-                onPress={handlePickAudio}
-                disabled={isUploadingAudio}
-              >
-                {isUploadingAudio ? (
-                  <ActivityIndicator size="small" color={colors.primary[500]} />
-                ) : (
-                  <>
-                    <Ionicons name="musical-notes-outline" size={24} color={colors.primary[500]} />
-                    <Text style={styles.audioPickerText}>Choose Audio File</Text>
-                    <Text style={styles.audioPickerHint}>MP3, WAV, M4A</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            )}
-            <Text style={styles.audioNote}>
-              Leave empty to use default alarm sound
-            </Text>
           </View>
 
           {/* Spacing at bottom */}
@@ -718,72 +549,6 @@ const styles = StyleSheet.create({
   },
   followUpTextActive: {
     color: colors.primary[500],
-  },
-  // Audio section styles
-  audioSection: {
-    marginBottom: spacing[4],
-  },
-  audioPickerButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing[5],
-    borderRadius: radius.lg,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: colors.primary[300],
-    backgroundColor: colors.primary[50],
-    gap: spacing[1],
-  },
-  audioPickerText: {
-    fontSize: typography.fontSize.base,
-    fontWeight: '500',
-    color: colors.primary[500],
-  },
-  audioPickerHint: {
-    fontSize: typography.fontSize.xs,
-    color: colors.text.tertiary,
-  },
-  audioSelected: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing[3],
-    borderRadius: radius.lg,
-    backgroundColor: colors.primary[50],
-    borderWidth: 1,
-    borderColor: colors.primary[200],
-  },
-  audioInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: spacing[2],
-  },
-  audioName: {
-    fontSize: typography.fontSize.sm,
-    color: colors.text.primary,
-    fontWeight: '500',
-    flex: 1,
-  },
-  audioActions: {
-    flexDirection: 'row',
-    gap: spacing[2],
-  },
-  audioActionButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.neutral.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.neutral[200],
-  },
-  audioNote: {
-    fontSize: typography.fontSize.xs,
-    color: colors.text.tertiary,
-    marginTop: spacing[2],
-    textAlign: 'center',
   },
   footer: {
     paddingHorizontal: spacing[4],

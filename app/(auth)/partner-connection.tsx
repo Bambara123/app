@@ -160,8 +160,8 @@ export default function PartnerConnectionScreen() {
           {
             text: 'Continue',
             onPress: () => {
-              const destination = role === 'parent' ? '/(parent)' : '/(child)';
-              router.replace(destination as any);
+      const destination = role === 'parent' ? '/(parent)' : '/(child)';
+      router.replace(destination as any);
             },
           },
         ]
@@ -218,12 +218,12 @@ export default function PartnerConnectionScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>
+        <Text style={styles.title}>
             {isParent ? 'Connect with your Caregiver' : 'Connect with your Parent'}
-          </Text>
-          <Text style={styles.subtitle}>
+        </Text>
+        <Text style={styles.subtitle}>
             Share your unique code or enter theirs to connect
-          </Text>
+        </Text>
         </View>
 
         {/* My Code Card */}
@@ -235,7 +235,7 @@ export default function PartnerConnectionScreen() {
           ) : (
             <TouchableOpacity onPress={handleCopyCode} activeOpacity={0.7}>
               <View style={styles.codeContainer}>
-                <Text style={styles.codeText}>{myCode}</Text>
+          <Text style={styles.codeText}>{myCode}</Text>
                 <View style={styles.copyBadge}>
                   <Ionicons 
                     name={copied ? "checkmark" : "copy-outline"} 
@@ -299,7 +299,7 @@ export default function PartnerConnectionScreen() {
           <Text style={styles.infoText}>
             Both users need to have the app installed. One person shares their code, the other enters it to connect.
           </Text>
-        </View>
+      </View>
 
         {/* Skip for now */}
         <TouchableOpacity style={styles.skipButton} onPress={handleSkipForNow}>

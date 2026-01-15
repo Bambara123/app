@@ -1,8 +1,8 @@
 // app/(parent)/index.tsx
 // Parent Home Screen
 
-import React, { useEffect } from 'react';
-import { View, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, ScrollView, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -13,15 +13,21 @@ import {
   StatusCard,
 } from '../../src/components/home';
 import { ReminderCard } from '../../src/components/reminders';
-import { Card, Avatar } from '../../src/components/common';
+import { Card, Avatar, Button } from '../../src/components/common';
 import { useUserStore, useReminderStore, useEmergencyStore, useAuthStore } from '../../src/stores';
-import { colors, spacing, layout } from '../../src/constants';
+import { colors, spacing, layout, typography } from '../../src/constants';
+import { startBatteryMonitoring } from '../../src/services/battery';
 
 export default function ParentHomeScreen() {
   const { profile, partner, partnerNote, setDemoData, initialize: initUser } = useUserStore();
   const { user } = useAuthStore();
   const { reminders, initialize: initReminders } = useReminderStore();
   const { triggerEmergency, isTriggering } = useEmergencyStore();
+  const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
+
+  // Get the name to display for partner (use partnerCallName if set, otherwise partner's nickname or name)
+  const partnerDisplayName = user?.partnerCallName || partner?.name || 'Family';
+  const isConnected = !!user?.connectedTo;
 
   // Initialize user data from auth store
   useEffect(() => {
@@ -38,6 +44,16 @@ export default function ParentHomeScreen() {
       return unsubscribe;
     }
   }, [profile?.id]);
+
+  // Start battery monitoring for parent device
+  useEffect(() => {
+    if (user?.id && user?.role === 'parent') {
+      const unsubscribe = startBatteryMonitoring(user.id, (level) => {
+        setBatteryLevel(level);
+      });
+      return unsubscribe;
+    }
+  }, [user?.id, user?.role]);
 
   // Get recent reminder
   const recentReminder = reminders.find((r) => r.status === 'pending');
@@ -94,56 +110,72 @@ export default function ParentHomeScreen() {
         {/* Greeting Card */}
         <GreetingCard
           name={profile?.name || 'Friend'}
-          customGreeting={partner?.customGreeting}
-          note={partnerNote}
-          partnerName={partner?.name}
+          customGreeting={isConnected ? partner?.customGreeting : undefined}
+          note={isConnected ? partnerNote : null}
+          partnerName={partnerDisplayName}
         />
 
         {/* Status Card (Battery + Emergency) */}
         <StatusCard
-          partnerName={partner?.name || 'Family'}
-          batteryLevel={profile?.batteryPercentage || null}
+          partnerName={partnerDisplayName}
+          batteryLevel={batteryLevel ?? profile?.batteryPercentage ?? null}
           mood={profile?.mood || null}
           isParent={true}
-          onEmergency={handleEmergency}
+          onEmergency={isConnected ? handleEmergency : undefined}
           isEmergencyLoading={isTriggering}
         />
 
-        {/* Rhythm Cards */}
+        {/* Connect Card if not connected */}
+        {!isConnected && (
+          <Card style={styles.connectCard}>
+            <Ionicons name="link-outline" size={32} color={colors.text.tertiary} />
+            <Text style={styles.connectText}>Connect with your caregiver to enable all features</Text>
+            <Button
+              title="Connect Now"
+              onPress={() => router.push('/(auth)/partner-connection')}
+              variant="outline"
+              size="sm"
+            />
+          </Card>
+        )}
+
+        {/* Rhythm Cards - Shows what each person is currently doing */}
         <RhythmCard
-          label={`${profile?.name?.toUpperCase() || 'MY'}'S RHYTHM`}
-          activity="Relaxing at home"
-          emoji="🏠"
-          iconName="book"
-          iconColor={colors.primary[500]}
+          label="My Rhythm"
+          activity={profile?.rhythm || "What are you up to?"}
+          isOwnRhythm={true}
+          userRole="parent"
+          isEditable={true}
+          onActivityChange={async (newActivity) => {
+            if (profile?.id) {
+              try {
+                const { userService } = await import('../../src/services/firebase/firestore');
+                await userService.updateUser(profile.id, { rhythm: newActivity });
+              } catch (error) {
+                console.log('Failed to save rhythm:', error);
+              }
+            }
+          }}
         />
 
-        {partner && (
+        {isConnected && partner && (
           <RhythmCard
-            label={`${partner.name?.toUpperCase() || 'FAMILY'}'S RHYTHM`}
-            activity="Working on a project"
-            emoji="💻"
-            iconName="laptop"
-            iconColor={colors.accent.main}
+            label={`${partnerDisplayName}'s Rhythm`}
+            activity={partner?.rhythm || "Busy with work"}
+            isOwnRhythm={false}
+            userRole="parent"
           />
         )}
 
-        {/* Note from Child - Parent reads the note from child */}
-        <NoteCard
-          note={partnerNote}
-          partnerName={partner?.name || 'Family'}
-          isEditable={false}
-        />
-
-        {/* Note for Child - Parent writes note for child */}
-        <View style={{ marginTop: spacing[4] }}>
+        {/* Note for Child - Parent writes a message for child to see */}
+        {isConnected ? (
           <NoteCard
             note={profile?.noteForPartner || null}
-            partnerName={partner?.name || 'Family'}
+            partnerName={partnerDisplayName}
             isEditable={true}
             onSaveNote={handleSaveNoteForChild}
           />
-        </View>
+        ) : null}
 
         {/* Recent Reminder */}
         {recentReminder && (
@@ -178,6 +210,18 @@ const styles = StyleSheet.create({
   },
   settingsButton: {
     padding: spacing[2],
+  },
+  connectCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing[6],
+    gap: spacing[3],
+    marginTop: spacing[4],
+  },
+  connectText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text.tertiary,
+    textAlign: 'center',
   },
   reminderSection: {
     marginTop: spacing[4],

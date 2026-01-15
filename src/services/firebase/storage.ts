@@ -15,12 +15,12 @@ export interface UploadResult {
   path: string;
 }
 
-// Image compression settings
+// Image compression settings - optimized for smaller file sizes
 const IMAGE_COMPRESSION_SETTINGS = {
-  profile: { maxWidth: 500, maxHeight: 500, quality: 0.7 },
-  chat: { maxWidth: 1200, maxHeight: 1200, quality: 0.7 },
-  album: { maxWidth: 1600, maxHeight: 1600, quality: 0.8 },
-  thumbnail: { maxWidth: 200, maxHeight: 200, quality: 0.6 },
+  profile: { maxWidth: 300, maxHeight: 300, quality: 0.5 },
+  chat: { maxWidth: 800, maxHeight: 800, quality: 0.5 },
+  album: { maxWidth: 1000, maxHeight: 1000, quality: 0.6 },
+  thumbnail: { maxWidth: 150, maxHeight: 150, quality: 0.4 },
 };
 
 // Compress image before upload

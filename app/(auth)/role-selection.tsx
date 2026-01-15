@@ -164,25 +164,25 @@ export default function RoleSelectionScreen() {
             <Text style={styles.loadingText}>Setting up your profile...</Text>
           </View>
         ) : (
-          <View style={styles.cardsContainer}>
-            <RoleCard
-              role="parent"
-              title="I'm a Parent"
-              description="I want to receive reminders and stay connected with my family"
-              icon="person"
-              onSelect={() => handleSelectRole('parent')}
+        <View style={styles.cardsContainer}>
+          <RoleCard
+            role="parent"
+            title="I'm a Parent"
+            description="I want to receive reminders and stay connected with my family"
+            icon="person"
+            onSelect={() => handleSelectRole('parent')}
               disabled={isLoading}
-            />
+          />
 
-            <RoleCard
-              role="child"
-              title="I'm a Caregiver"
-              description="I want to care for my parent and help them with daily activities"
-              icon="people"
-              onSelect={() => handleSelectRole('child')}
+          <RoleCard
+            role="child"
+            title="I'm a Caregiver"
+            description="I want to care for my parent and help them with daily activities"
+            icon="people"
+            onSelect={() => handleSelectRole('child')}
               disabled={isLoading}
-            />
-          </View>
+          />
+        </View>
         )}
       </View>
     </SafeAreaView>

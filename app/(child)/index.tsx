@@ -32,6 +32,10 @@ export default function ChildHomeScreen() {
   const { user } = useAuthStore();
   const { activeAlerts, initialize: initEmergency } = useEmergencyStore();
 
+  // Get the name to display for partner (use partnerCallName if set, otherwise partner's nickname or name)
+  const partnerDisplayName = user?.partnerCallName || partner?.name || 'Parent';
+  const isConnected = !!user?.connectedTo;
+
   // Initialize user data from auth store
   useEffect(() => {
     if (user) {
@@ -99,7 +103,7 @@ export default function ChildHomeScreen() {
       return (
         <Card style={styles.mapCard}>
           <Text style={styles.mapLabel}>
-            {partner.name}'s Location
+            {partnerDisplayName}'s Location
           </Text>
           <View style={styles.webMapPlaceholder}>
             <Ionicons name="location" size={48} color={colors.primary[500]} />
@@ -122,7 +126,7 @@ export default function ChildHomeScreen() {
     return (
       <Card style={styles.mapCard} noPadding>
         <Text style={styles.mapLabel}>
-          {partner.name}'s Location
+          {partnerDisplayName}'s Location
         </Text>
         <View style={styles.mapContainer}>
           {MapView && (
@@ -141,7 +145,7 @@ export default function ChildHomeScreen() {
                     latitude: partner.lastLocation.latitude,
                     longitude: partner.lastLocation.longitude,
                   }}
-                  title={partner.name}
+                  title={partnerDisplayName}
                 />
               )}
             </MapView>
@@ -180,56 +184,71 @@ export default function ChildHomeScreen() {
         {/* Greeting Card */}
         <GreetingCard
           name={profile?.name || 'Friend'}
-          note={partnerNote}
-          partnerName={partner?.name}
+          note={isConnected ? partnerNote : null}
+          partnerName={partnerDisplayName}
         />
 
         {/* Parent Status Card */}
-        <StatusCard
-          partnerName={partner?.name || 'Parent'}
-          batteryLevel={partner?.batteryPercentage || null}
-          mood={partner?.mood || null}
-          isParent={false}
-        />
+        {isConnected ? (
+          <StatusCard
+            partnerName={partnerDisplayName}
+            batteryLevel={partner?.batteryPercentage || null}
+            mood={partner?.mood || null}
+            isParent={false}
+          />
+        ) : (
+          <Card style={styles.connectCard}>
+            <Ionicons name="link-outline" size={32} color={colors.text.tertiary} />
+            <Text style={styles.connectText}>Connect with your parent to see their status</Text>
+            <Button
+              title="Connect Now"
+              onPress={() => router.push('/(auth)/partner-connection')}
+              variant="outline"
+              size="sm"
+            />
+          </Card>
+        )}
 
-        {/* Rhythm Cards */}
-        {partner && (
+        {/* Rhythm Cards - Shows what each person is currently doing */}
+        {isConnected && partner && (
           <RhythmCard
-            label={`${partner.name?.toUpperCase() || 'PARENT'}'S RHYTHM`}
-            activity="Gardening in the backyard"
-            emoji="🌱"
-            iconName="book"
-            iconColor={colors.primary[500]}
+            label={`${partnerDisplayName}'s Rhythm`}
+            activity={partner?.rhythm || "Relaxing at home"}
+            isOwnRhythm={false}
+            userRole="child"
           />
         )}
 
         <RhythmCard
-          label={`${profile?.name?.toUpperCase() || 'MY'}'S RHYTHM`}
-          activity="Working on a new project"
-          emoji="💻"
-          iconName="laptop"
-          iconColor={colors.accent.main}
+          label="My Rhythm"
+          activity={profile?.rhythm || "What are you up to?"}
+          isOwnRhythm={true}
+          userRole="child"
+          isEditable={true}
+          onActivityChange={async (newActivity) => {
+            if (profile?.id) {
+              try {
+                const { userService } = await import('../../src/services/firebase/firestore');
+                await userService.updateUser(profile.id, { rhythm: newActivity });
+              } catch (error) {
+                console.log('Failed to save rhythm:', error);
+              }
+            }
+          }}
         />
 
-        {/* Note from Parent - Child reads the note from parent */}
-        <NoteCard
-          note={partnerNote}
-          partnerName={partner?.name || 'Parent'}
-          isEditable={false}
-        />
-
-        {/* Note for Parent - Child writes note for parent */}
-        <View style={{ marginTop: spacing[4] }}>
+        {/* Note for Parent - Child writes a message for parent to see */}
+        {isConnected ? (
           <NoteCard
             note={profile?.noteForPartner || null}
-            partnerName={partner?.name || 'Parent'}
+            partnerName={partnerDisplayName}
             isEditable={true}
             onSaveNote={handleSaveNoteForParent}
           />
-        </View>
+        ) : null}
 
         {/* Location Map */}
-        {renderLocationCard()}
+        {isConnected && renderLocationCard()}
       </ScrollView>
     </SafeAreaView>
   );
@@ -252,6 +271,18 @@ const styles = StyleSheet.create({
   },
   settingsButton: {
     padding: spacing[2],
+  },
+  connectCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing[6],
+    gap: spacing[3],
+    marginTop: spacing[4],
+  },
+  connectText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text.tertiary,
+    textAlign: 'center',
   },
   mapCard: {
     marginTop: spacing[4],

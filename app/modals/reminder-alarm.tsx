@@ -12,11 +12,14 @@ import { Button } from '../../src/components/common';
 import { useReminderStore, useAuthStore } from '../../src/stores';
 import { colors, spacing, typography, radius, reminderIcons } from '../../src/constants';
 
+const AUTO_TIMEOUT_MS = 60 * 1000; // 1 minute auto-timeout
+
 export default function ReminderAlarmScreen() {
   const { reminderId } = useLocalSearchParams<{ reminderId: string }>();
-  const { reminders, markAsDone, snooze } = useReminderStore();
+  const { reminders, markAsDone, markAsMissed, snooze } = useReminderStore();
   const { user } = useAuthStore();
   const soundRef = useRef<Audio.Sound | null>(null);
+  const autoTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const reminder = reminders.find((r) => r.id === reminderId);
 
@@ -54,6 +57,20 @@ export default function ReminderAlarmScreen() {
     };
     playRingtone();
 
+    // Auto-timeout after 1 minute - mark as missed
+    autoTimeoutRef.current = setTimeout(async () => {
+      if (reminderId && reminder) {
+        await stopAlarm();
+        await markAsMissed(
+          reminderId, 
+          user?.connectedTo, 
+          reminder.title, 
+          reminder.followUpMinutes
+        );
+        router.back();
+      }
+    }, AUTO_TIMEOUT_MS);
+
     return () => {
       Vibration.cancel();
       // Stop and unload sound
@@ -61,11 +78,20 @@ export default function ReminderAlarmScreen() {
         soundRef.current.stopAsync();
         soundRef.current.unloadAsync();
       }
+      // Clear auto-timeout
+      if (autoTimeoutRef.current) {
+        clearTimeout(autoTimeoutRef.current);
+      }
     };
-  }, [reminder?.customAlarmAudioUrl]);
+  }, [reminder?.customAlarmAudioUrl, reminderId]);
 
   const stopAlarm = async () => {
     Vibration.cancel();
+    // Clear auto-timeout
+    if (autoTimeoutRef.current) {
+      clearTimeout(autoTimeoutRef.current);
+      autoTimeoutRef.current = null;
+    }
     if (soundRef.current) {
       await soundRef.current.stopAsync();
       await soundRef.current.unloadAsync();
@@ -74,9 +100,10 @@ export default function ReminderAlarmScreen() {
   };
 
   const handleDone = async () => {
-    if (reminderId) {
+    if (reminderId && reminder) {
       await stopAlarm();
-      await markAsDone(reminderId);
+      // Notify the adult child that parent completed the task
+      await markAsDone(reminderId, user?.connectedTo, reminder.title);
       router.back();
     }
   };
@@ -84,8 +111,15 @@ export default function ReminderAlarmScreen() {
   const handleSnooze = async () => {
     if (reminderId && reminder) {
       await stopAlarm();
-      // Pass user info for notification to child on 2nd snooze
-      await snooze(reminderId, 10, user?.connectedTo, reminder.snoozeCount, reminder.title);
+      // Use followUpMinutes as snooze duration, notify child
+      await snooze(
+        reminderId, 
+        reminder.followUpMinutes || 10, 
+        user?.connectedTo, 
+        reminder.snoozeCount, 
+        reminder.title,
+        reminder.followUpMinutes
+      );
       router.back();
     }
   };
@@ -158,7 +192,7 @@ export default function ReminderAlarmScreen() {
         />
 
         <Button
-          title="Snooze (10 min)"
+          title={`Snooze (${reminder.followUpMinutes || 10} min)`}
           onPress={handleSnooze}
           variant="outline"
           size="lg"

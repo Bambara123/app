@@ -92,9 +92,11 @@ export const userService = {
       connectedTo: null,
       connectionCode,
       nickname: null,
+      partnerCallName: null,
       profileSetupComplete: false,
       noteForPartner: null,
       customGreeting: null,
+      rhythm: null,
       batteryPercentage: null,
       mood: null,
       lastLocation: null,
@@ -205,6 +207,7 @@ export const userService = {
       profileSetupComplete: data.profileSetupComplete ?? false,
       noteForPartner: data.noteForPartner || null,
       customGreeting: data.customGreeting || null,
+      rhythm: data.rhythm || null,
       batteryPercentage: data.batteryPercentage ?? null,
       mood: data.mood || null,
       lastLocation: data.lastLocation
@@ -217,7 +220,26 @@ export const userService = {
       lastInteraction: timestampToDate(data.lastInteraction),
       createdAt: timestampToDate(data.createdAt),
       updatedAt: timestampToDate(data.updatedAt),
+      partnerCallName: data.partnerCallName || null,
     };
+  },
+
+  async deleteUser(userId: string): Promise<void> {
+    const userRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    
+    if (userSnap.exists()) {
+      const userData = userSnap.data();
+      
+      // If connected to someone, clear their connectedTo field
+      if (userData.connectedTo) {
+        const partnerRef = doc(db, 'users', userData.connectedTo);
+        await updateDoc(partnerRef, { connectedTo: null });
+      }
+      
+      // Delete the user document
+      await deleteDoc(userRef);
+    }
   },
 };
 
@@ -395,6 +417,7 @@ export const reminderService = {
       completedAt: null,
       snoozedUntil: null,
       snoozeCount: 0,
+      missCount: 0,
       customAlarmAudioUrl: null,
       followUpMinutes: input.followUpMinutes || 10,
       notificationId: null,
@@ -510,6 +533,7 @@ export const reminderService = {
         ? timestampToDate(data.snoozedUntil)
         : null,
       snoozeCount: data.snoozeCount || 0,
+      missCount: data.missCount || 0,
       customAlarmAudioUrl: data.customAlarmAudioUrl || null,
       followUpMinutes: data.followUpMinutes || 10,
       notificationId: data.notificationId || null,
