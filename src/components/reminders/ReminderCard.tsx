@@ -47,6 +47,13 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
       case 'snoozed':
         return <Badge text="Snoozed" variant="warning" />;
       default:
+        // Show badge based on counts even if status is pending (waiting for next ring)
+        if (reminder.snoozeCount > 0) {
+          return <Badge text={`Snoozed ${reminder.snoozeCount}x`} variant="warning" />;
+        }
+        if (reminder.missCount > 0) {
+          return <Badge text={`Missed ${reminder.missCount}x`} variant="danger" />;
+        }
         return null;
     }
   };
@@ -57,7 +64,7 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
       activeOpacity={onPress ? 0.8 : 1}
       disabled={!onPress}
     >
-      <Card style={[styles.container, { backgroundColor: labelStyle.bg }]}>
+      <Card style={{ ...styles.container, backgroundColor: labelStyle.bg }}>
         <View style={styles.content}>
           {/* Icon */}
           <View style={[styles.iconContainer, { backgroundColor: `${labelStyle.accent}20` }]}>
@@ -103,15 +110,15 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
           </View>
         </View>
 
-        {/* Actions for parent - only Done button, Snooze is only available when alarm rings */}
-        {isParent && reminder.status === 'pending' && (
+        {/* Actions for parent - only Mark as Done button */}
+        {isParent && reminder.status === 'pending' && onDone && (
           <View style={styles.actions}>
             <TouchableOpacity
               onPress={onDone}
               style={[styles.actionButton, styles.doneButton]}
             >
               <Ionicons name="checkmark-circle" size={18} color={colors.neutral.white} />
-              <Text style={styles.doneText}>Mark as Done</Text>
+              <Text style={styles.actionText}>Mark as Done</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -181,7 +188,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing[3],
     borderTopWidth: 1,
     borderTopColor: 'rgba(0,0,0,0.05)',
-    gap: spacing[2],
   },
   actionButton: {
     flexDirection: 'row',
@@ -194,7 +200,7 @@ const styles = StyleSheet.create({
   doneButton: {
     backgroundColor: colors.success.main,
   },
-  doneText: {
+  actionText: {
     fontSize: typography.fontSize.sm,
     color: colors.neutral.white,
     fontWeight: '600',

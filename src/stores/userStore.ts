@@ -2,39 +2,7 @@
 // User profile and partner state management
 
 import { create } from 'zustand';
-import { isDemoMode } from '../services/firebase/config';
 import { User, PartnerStatus, Connection } from '../types';
-
-// Demo partner for testing
-const DEMO_PARTNER: PartnerStatus = {
-  id: 'demo-partner-456',
-  name: 'Mom',
-  phone: '+1987654321',
-  profileImageUrl: null,
-  batteryPercentage: 72,
-  mood: 'happy',
-  lastLocation: {
-    latitude: 37.7749,
-    longitude: -122.4194,
-    timestamp: new Date(),
-    address: '123 Main Street, San Francisco, CA',
-  },
-  lastInteraction: new Date(),
-  isOnline: true,
-  noteForPartner: 'Had a great breakfast today! 🥞',
-  customGreeting: 'Good Morning, sweetie!',
-  rhythm: 'Relaxing in the garden 🌷',
-};
-
-const DEMO_CONNECTION: Connection = {
-  id: 'demo-connection-789',
-  parentId: 'demo-partner-456',
-  childId: 'demo-user-123',
-  initiatedBy: 'demo-user-123',
-  status: 'active',
-  connectedAt: new Date(),
-  updatedAt: new Date(),
-};
 
 interface UserState {
   // State
@@ -52,7 +20,6 @@ interface UserState {
   disconnect: () => Promise<void>;
   updateNote: (note: string) => Promise<void>;
   updateGreeting: (greeting: string) => Promise<void>;
-  setDemoData: (user: User) => void;
   reset: () => void;
 }
 
@@ -65,30 +32,8 @@ export const useUserStore = create<UserState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  // Set demo data for testing
-  setDemoData: (user: User) => {
-    set({
-      profile: user,
-      partner: DEMO_PARTNER,
-      connection: DEMO_CONNECTION,
-      partnerNote: DEMO_PARTNER.noteForPartner,
-      isLoading: false,
-    });
-  },
-
   // Initialize user data and subscriptions
   initialize: (userId: string) => {
-    // In demo mode, use demo data
-    if (isDemoMode) {
-      set({
-        partner: DEMO_PARTNER,
-        connection: DEMO_CONNECTION,
-        partnerNote: DEMO_PARTNER.noteForPartner,
-        isLoading: false,
-      });
-      return () => {};
-    }
-
     let unsubscribeUser: (() => void) | null = null;
 
     const setup = async () => {
@@ -125,14 +70,6 @@ export const useUserStore = create<UserState>((set, get) => ({
 
   // Load partner data
   loadPartner: async (partnerId: string) => {
-    if (isDemoMode) {
-      set({
-        partner: DEMO_PARTNER,
-        partnerNote: DEMO_PARTNER.noteForPartner,
-      });
-      return;
-    }
-
     try {
       const { userService } = await import('../services/firebase/firestore');
       const partnerUser = await userService.getUser(partnerId);
@@ -164,21 +101,13 @@ export const useUserStore = create<UserState>((set, get) => ({
         });
       }
     } catch (error) {
-      console.warn('Failed to load partner:', error);
+      console.error('Failed to load partner:', error);
+      set({ error: 'Failed to load partner data' });
     }
   },
 
   // Connect to partner by their connection code
   connectByCode: async (myUserId: string, myRole: 'parent' | 'child', partnerCode: string) => {
-    if (isDemoMode) {
-      set({
-        connection: DEMO_CONNECTION,
-        partner: DEMO_PARTNER,
-        isLoading: false,
-      });
-      return;
-    }
-
     set({ isLoading: true, error: null });
     try {
       const { connectionService } = await import('../services/firebase/firestore');
@@ -230,16 +159,6 @@ export const useUserStore = create<UserState>((set, get) => ({
     const { profile } = get();
     if (!profile) return;
 
-    if (isDemoMode) {
-      set({
-        connection: null,
-        partner: null,
-        partnerNote: null,
-        isLoading: false,
-      });
-      return;
-    }
-
     set({ isLoading: true, error: null });
     try {
       const { connectionService } = await import('../services/firebase/firestore');
@@ -265,11 +184,6 @@ export const useUserStore = create<UserState>((set, get) => ({
     const { profile } = get();
     if (!profile) return;
 
-    if (isDemoMode) {
-      set({ profile: { ...profile, noteForPartner: note } });
-      return;
-    }
-
     try {
       const { userService } = await import('../services/firebase/firestore');
       await userService.updateUser(profile.id, { noteForPartner: note });
@@ -284,11 +198,6 @@ export const useUserStore = create<UserState>((set, get) => ({
   updateGreeting: async (greeting: string) => {
     const { profile } = get();
     if (!profile) return;
-
-    if (isDemoMode) {
-      set({ profile: { ...profile, customGreeting: greeting } });
-      return;
-    }
 
     try {
       const { userService } = await import('../services/firebase/firestore');

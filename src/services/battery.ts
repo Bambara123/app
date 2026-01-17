@@ -77,8 +77,8 @@ export const startBatteryMonitoring = (
     }
   };
 
-  // Initial update
-  updateBattery();
+  // Delay initial update to avoid blocking UI on load
+  setTimeout(updateBattery, 2000);
 
   // Set up interval to check every 5 minutes
   const interval = setInterval(updateBattery, 5 * 60 * 1000);

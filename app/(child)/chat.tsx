@@ -2,7 +2,7 @@
 // Child Chat Screen
 
 import React, { useEffect, useRef, useState } from 'react';
-import { View, FlatList, StyleSheet, Text, TouchableOpacity, Modal, Image, Dimensions } from 'react-native';
+import { View, FlatList, StyleSheet, Text, TouchableOpacity, Modal, Image, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -19,11 +19,15 @@ export default function ChildChatScreen() {
   const {
     messages,
     initialize,
+    loadMore,
     sendMessage,
     isSending,
+    isLoadingMore,
+    hasMoreMessages,
   } = useChatStore();
   const flatListRef = useRef<FlatList>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [isAtTop, setIsAtTop] = useState(false);
 
   const isConnected = !!user?.connectedTo;
   const partnerDisplayName = user?.partnerCallName || partner?.name || 'Parent';
@@ -32,11 +36,24 @@ export default function ChildChatScreen() {
     if (profile?.id && partner?.id && isConnected) {
       const initChat = async () => {
         const unsubscribe = await initialize([profile.id, partner.id]);
+        // Scroll to bottom after messages load
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: false });
+        }, 100);
         return unsubscribe;
       };
       initChat();
     }
   }, [profile?.id, partner?.id, isConnected]);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }, 50);
+    }
+  }, [messages]);
 
   const handleNavigateToConnect = () => {
     router.push('/(auth)/partner-connection');
@@ -80,6 +97,49 @@ export default function ChildChatScreen() {
     />
   );
 
+  // Handle scroll to detect when user scrolls near top
+  const handleScroll = (event: any) => {
+    const { contentOffset } = event.nativeEvent;
+    
+    // Check if user scrolled to top (within 100px)
+    const isNearTop = contentOffset.y < 100;
+    
+    if (isNearTop && !isLoadingMore && hasMoreMessages && !isAtTop) {
+      setIsAtTop(true);
+      loadMore();
+    } else if (!isNearTop) {
+      setIsAtTop(false);
+    }
+  };
+
+  // Render load more button
+  const renderLoadMoreButton = () => {
+    if (!isConnected || messages.length === 0) return null;
+    
+    if (!hasMoreMessages) {
+      return (
+        <View style={styles.loadMoreContainer}>
+          <Text style={styles.noMoreText}>No more messages</Text>
+        </View>
+      );
+    }
+
+    return (
+      <TouchableOpacity 
+        onPress={loadMore} 
+        style={styles.loadMoreButton}
+        disabled={isLoadingMore}
+      >
+        <Text style={styles.loadMoreText}>
+          {isLoadingMore ? 'Loading...' : 'Load older messages'}
+        </Text>
+        {!isLoadingMore && (
+          <Ionicons name="chevron-up" size={16} color={colors.primary[500]} />
+        )}
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Fullscreen Image Preview Modal */}
@@ -88,13 +148,18 @@ export default function ChildChatScreen() {
         transparent={true}
         animationType="fade"
         onRequestClose={() => setSelectedImage(null)}
+        statusBarTranslucent
       >
-        <View style={styles.imageModalContainer}>
+        <TouchableOpacity 
+          style={styles.imageModalContainer}
+          activeOpacity={1}
+          onPress={() => setSelectedImage(null)}
+        >
           <TouchableOpacity
             style={styles.imageModalCloseButton}
             onPress={() => setSelectedImage(null)}
           >
-            <Ionicons name="close" size={28} color={colors.neutral.white} />
+            <Ionicons name="close" size={32} color={colors.neutral.white} />
           </TouchableOpacity>
           {selectedImage && (
             <Image
@@ -103,68 +168,79 @@ export default function ChildChatScreen() {
               resizeMode="contain"
             />
           )}
-        </View>
-      </Modal>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Echoes</Text>
-      </View>
-
-      {/* Not Connected Banner */}
-      {!isConnected ? (
-        <TouchableOpacity style={styles.notConnectedBanner} onPress={handleNavigateToConnect}>
-          <Ionicons name="link-outline" size={20} color={colors.warning.dark} />
-          <Text style={styles.notConnectedText}>
-            Connect with your parent to start chatting
-          </Text>
-          <Ionicons name="chevron-forward" size={20} color={colors.warning.dark} />
         </TouchableOpacity>
-      ) : partner ? (
-        <ChatHeader
-          partnerName={partnerDisplayName}
-          partnerAvatar={partner.profileImageUrl}
-          partnerPhone={partner.phone}
-          isOnline={partner.isOnline}
-        />
-      ) : null}
+      </Modal>
+      
+      <KeyboardAvoidingView 
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.title}>Echoes</Text>
+        </View>
 
-      {/* Messages */}
-      <FlatList
-        ref={flatListRef}
-        data={isConnected ? messages : []}
-        keyExtractor={(item) => item.id}
-        renderItem={renderMessage}
-        contentContainerStyle={styles.messageList}
-        showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => {
-          flatListRef.current?.scrollToEnd({ animated: true });
-        }}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons 
-              name={isConnected ? "chatbubbles-outline" : "link-outline"} 
-              size={48} 
-              color={colors.text.tertiary} 
-            />
-            <Text style={styles.emptyText}>
-              {isConnected 
-                ? `Start a conversation with ${partnerDisplayName}`
-                : 'Connect with your parent to unlock chat'
-              }
+        {/* Not Connected Banner */}
+        {!isConnected ? (
+          <TouchableOpacity style={styles.notConnectedBanner} onPress={handleNavigateToConnect}>
+            <Ionicons name="link-outline" size={20} color={colors.warning.dark} />
+            <Text style={styles.notConnectedText}>
+              Connect with your parent to start chatting
             </Text>
-          </View>
-        }
-      />
+            <Ionicons name="chevron-forward" size={20} color={colors.warning.dark} />
+          </TouchableOpacity>
+        ) : partner ? (
+          <ChatHeader
+            partnerName={partnerDisplayName}
+            partnerAvatar={partner.profileImageUrl}
+            partnerPhone={partner.phone}
+            isOnline={partner.isOnline}
+          />
+        ) : null}
 
-      {/* Message Input - Disabled style when not connected */}
-      <View style={!isConnected && styles.disabledOverlay}>
+        {/* Messages */}
+        <FlatList
+          ref={flatListRef}
+          data={isConnected ? messages : []}
+          keyExtractor={(item) => item.id}
+          renderItem={renderMessage}
+          contentContainerStyle={styles.messageList}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          onScroll={handleScroll}
+          scrollEventThrottle={400}
+          onContentSizeChange={() => {
+            flatListRef.current?.scrollToEnd({ animated: true });
+          }}
+          ListHeaderComponent={renderLoadMoreButton}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons 
+                name={isConnected ? "chatbubbles-outline" : "link-outline"} 
+                size={48} 
+                color={colors.text.tertiary} 
+              />
+              <Text style={styles.emptyText}>
+                {isConnected 
+                  ? `Start a conversation with ${partnerDisplayName}`
+                  : 'Connect with your parent to unlock chat'
+                }
+              </Text>
+            </View>
+          }
+        />
+
+        {/* Message Input */}
         <MessageInput
           onSendText={handleSendText}
           onSendImage={handleSendImage}
           onSendVoice={handleSendVoice}
           isSending={isSending}
+          isConnected={isConnected}
+          onNotConnectedPress={handleNavigateToConnect}
         />
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -173,6 +249,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,
+  },
+  keyboardAvoid: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -218,9 +297,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: spacing[6],
   },
-  disabledOverlay: {
-    opacity: 0.5,
-  },
   imageModalContainer: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.95)',
@@ -229,14 +305,43 @@ const styles = StyleSheet.create({
   },
   imageModalCloseButton: {
     position: 'absolute',
-    top: 50,
+    top: 60,
     right: 20,
     zIndex: 10,
-    padding: spacing[2],
+    padding: spacing[3],
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 20,
   },
   imageModalImage: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT * 0.8,
+    width: SCREEN_WIDTH - 20,
+    height: SCREEN_HEIGHT * 0.75,
+  },
+  loadMoreContainer: {
+    paddingVertical: spacing[4],
+    paddingHorizontal: spacing[4],
+    alignItems: 'center',
+  },
+  loadMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[4],
+    backgroundColor: colors.neutral[100],
+    borderRadius: radius.lg,
+    marginHorizontal: spacing[4],
+    marginVertical: spacing[2],
+    gap: spacing[2],
+  },
+  loadMoreText: {
+    color: colors.primary[500],
+    fontSize: typography.fontSize.sm,
+    fontWeight: '600',
+  },
+  noMoreText: {
+    color: colors.text.tertiary,
+    fontSize: typography.fontSize.sm,
+    textAlign: 'center',
   },
 });
 

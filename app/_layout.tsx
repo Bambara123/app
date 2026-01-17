@@ -13,7 +13,7 @@ import {
 } from '@expo-google-fonts/playfair-display';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { useAuthStore } from '../src/stores';
+import { useAuthStore, useReminderStore, useUserStore } from '../src/stores';
 import { setupNotificationListeners } from '../src/services/notifications';
 import { colors } from '../src/constants';
 
@@ -22,6 +22,8 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const { initialize, isInitialized, user } = useAuthStore();
+  const { handleAlarmTriggered, handleAutoMiss } = useReminderStore();
+  const { profile } = useUserStore();
   const [appReady, setAppReady] = useState(false);
 
   const [fontsLoaded] = useFonts({
@@ -36,11 +38,22 @@ export default function RootLayout() {
     return unsubscribe;
   }, []);
 
-  // Setup notification listeners
+  // Setup notification listeners with reminder handlers
   useEffect(() => {
-    const cleanup = setupNotificationListeners();
+    const parentNickname = profile?.nickname || profile?.name || 'Your parent';
+    
+    const cleanup = setupNotificationListeners(
+      // Handler when reminder notification is received (mark trigger time)
+      async (reminderId: string) => {
+        await handleAlarmTriggered(reminderId);
+      },
+      // Handler when auto-miss notification fires (1 minute timeout)
+      async (reminderId: string) => {
+        await handleAutoMiss(reminderId, user?.connectedTo, parentNickname);
+      }
+    );
     return cleanup;
-  }, []);
+  }, [user?.connectedTo, profile?.nickname, profile?.name]);
 
   // Hide splash screen when ready
   useEffect(() => {

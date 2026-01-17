@@ -3,29 +3,7 @@
 
 import { create } from 'zustand';
 import { User as FirebaseUser } from 'firebase/auth';
-import { isDemoMode } from '../services/firebase/config';
 import { User, UserRole } from '../types';
-
-// Demo user for testing without Firebase
-const DEMO_USER: User = {
-  id: 'demo-user-123',
-  name: 'Demo User',
-  email: 'demo@eldercare.app',
-  phone: '+1234567890',
-  profileImageUrl: null,
-  role: null,
-  connectedTo: null,
-  connectionCode: 'DEMO01',
-  noteForPartner: null,
-  customGreeting: null,
-  batteryPercentage: 85,
-  mood: 'happy',
-  lastLocation: null,
-  expoPushToken: null,
-  lastInteraction: new Date(),
-  createdAt: new Date(),
-  updatedAt: new Date(),
-};
 
 interface AuthState {
   // State
@@ -43,8 +21,6 @@ interface AuthState {
   setRole: (role: UserRole) => Promise<void>;
   updateUser: (data: Partial<User>) => Promise<void>;
   clearError: () => void;
-  // Demo mode
-  demoSignIn: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -57,13 +33,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   // Initialize auth listener
   initialize: () => {
-    // In demo mode, just mark as initialized
-    if (isDemoMode) {
-      console.log('Running in demo mode - Firebase not configured');
-      set({ isLoading: false, isInitialized: true });
-      return () => {};
-    }
-
     // Real Firebase initialization
     const initFirebase = async () => {
       try {
@@ -89,8 +58,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
         return unsubscribeAuth;
       } catch (error) {
-        console.warn('Firebase auth initialization failed:', error);
-        set({ isLoading: false, isInitialized: true });
+        console.error('Firebase auth initialization failed:', error);
+        set({ isLoading: false, isInitialized: true, error: 'Failed to initialize authentication' });
         return () => {};
       }
     };
@@ -105,16 +74,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     };
   },
 
-  // Demo sign in (for testing without Firebase)
-  demoSignIn: () => {
-    set({ user: DEMO_USER, isLoading: false, isInitialized: true });
-  },
-
   // Google Sign In
   signInWithGoogle: async (idToken: string) => {
     set({ isLoading: true, error: null });
     try {
-      const user = await signInWithGoogle(idToken);
+      const { signInWithGoogle: firebaseSignInWithGoogle } = await import('../services/firebase/auth');
+      const user = await firebaseSignInWithGoogle(idToken);
       set({ user, isLoading: false });
     } catch (error: any) {
       set({
@@ -129,7 +94,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signInWithApple: async (identityToken: string, nonce: string) => {
     set({ isLoading: true, error: null });
     try {
-      const user = await signInWithApple(identityToken, nonce);
+      const { signInWithApple: firebaseSignInWithApple } = await import('../services/firebase/auth');
+      const user = await firebaseSignInWithApple(identityToken, nonce);
       set({ user, isLoading: false });
     } catch (error: any) {
       set({
@@ -144,6 +110,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signOut: async () => {
     set({ isLoading: true, error: null });
     try {
+      const { signOut: firebaseSignOut } = await import('../services/firebase/auth');
       await firebaseSignOut();
       set({ user: null, firebaseUser: null, isLoading: false });
     } catch (error: any) {
@@ -162,6 +129,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     set({ isLoading: true, error: null });
     try {
+      const { userService } = await import('../services/firebase/firestore');
       await userService.setRole(user.id, role);
       set({
         user: { ...user, role },
@@ -183,6 +151,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     set({ isLoading: true, error: null });
     try {
+      const { userService } = await import('../services/firebase/firestore');
       await userService.updateUser(user.id, data);
       set({
         user: { ...user, ...data },

@@ -14,7 +14,7 @@ import {
 } from '../../src/components/home';
 import { Card, Avatar, Button } from '../../src/components/common';
 import { useUserStore, useEmergencyStore, useAuthStore } from '../../src/stores';
-import { colors, spacing, layout, typography, moodIcons } from '../../src/constants';
+import { colors, spacing, layout, typography } from '../../src/constants';
 
 // Conditionally import MapView only on native platforms
 let MapView: any = null;
@@ -28,7 +28,7 @@ if (Platform.OS !== 'web') {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function ChildHomeScreen() {
-  const { profile, partner, partnerNote, setDemoData, initialize: initUser } = useUserStore();
+  const { profile, partner, partnerNote, initialize: initUser } = useUserStore();
   const { user } = useAuthStore();
   const { activeAlerts, initialize: initEmergency } = useEmergencyStore();
 
@@ -39,7 +39,6 @@ export default function ChildHomeScreen() {
   // Initialize user data from auth store
   useEffect(() => {
     if (user) {
-      setDemoData(user);
       initUser(user.id);
     }
   }, [user]);
@@ -84,16 +83,6 @@ export default function ChildHomeScreen() {
     }
   };
 
-  const getMoodColor = (mood: string | null) => {
-    const moodColors: Record<string, string> = {
-      happy: colors.success.main,
-      neutral: colors.warning.main,
-      sad: colors.primary[500],
-      tired: colors.accent.main,
-    };
-    return mood ? moodColors[mood] : colors.neutral[400];
-  };
-
   // Render map component (native) or fallback (web)
   const renderLocationCard = () => {
     if (!partner?.lastLocation) return null;
@@ -132,12 +121,14 @@ export default function ChildHomeScreen() {
           {MapView && (
             <MapView
               style={styles.map}
-              initialRegion={{
+              region={{
                 latitude: partner.lastLocation.latitude,
                 longitude: partner.lastLocation.longitude,
                 latitudeDelta: 0.01,
                 longitudeDelta: 0.01,
               }}
+              showsUserLocation={false}
+              showsMyLocationButton={false}
             >
               {Marker && (
                 <Marker
@@ -146,6 +137,7 @@ export default function ChildHomeScreen() {
                     longitude: partner.lastLocation.longitude,
                   }}
                   title={partnerDisplayName}
+                  description={partner.lastLocation.address || undefined}
                 />
               )}
             </MapView>
@@ -193,8 +185,8 @@ export default function ChildHomeScreen() {
           <StatusCard
             partnerName={partnerDisplayName}
             batteryLevel={partner?.batteryPercentage || null}
-            mood={partner?.mood || null}
             isParent={false}
+            partnerLocation={partner?.lastLocation || null}
           />
         ) : (
           <Card style={styles.connectCard}>

@@ -303,7 +303,7 @@ export default function SettingsScreen() {
               <View style={styles.placeholderAvatar}>
                 <Ionicons name="person-outline" size={24} color={colors.text.tertiary} />
               </View>
-              <View style={styles.connectionInfo}>
+              <View style={styles.notConnectedInfo}>
                 <Text style={styles.placeholderName}>Not connected</Text>
                 <Text style={styles.connectionStatus}>
                   Connect with your {profile?.role === 'parent' ? 'caregiver' : 'parent'}
@@ -580,6 +580,11 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.base,
     fontWeight: '600',
     color: colors.text.tertiary,
+  },
+  notConnectedInfo: {
+    flex: 1,
+    marginLeft: spacing[3],
+    marginRight: spacing[3],
   },
   connectSmallButton: {
     backgroundColor: colors.primary[500],

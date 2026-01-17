@@ -53,13 +53,31 @@ export default function ChildRemindersScreen() {
       handleNavigateToConnect();
       return;
     }
+    // Cannot edit reminders that have been actioned (done, snoozed, missed)
+    if (reminder.status !== 'pending') {
+      Alert.alert(
+        'Cannot Edit',
+        `This reminder has been ${reminder.status}. You cannot edit it anymore.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
     setSelectedReminder(reminder);
     router.push('/modals/create-reminder');
   };
 
-  const handleDeleteReminder = async (reminderId: string) => {
+  const handleDeleteReminder = async (reminder: Reminder) => {
     if (!isConnected) {
       handleNavigateToConnect();
+      return;
+    }
+    // Cannot delete reminders that have been actioned (done, snoozed, missed)
+    if (reminder.status !== 'pending') {
+      Alert.alert(
+        'Cannot Delete',
+        `This reminder has been ${reminder.status}. You cannot delete it anymore.`,
+        [{ text: 'OK' }]
+      );
       return;
     }
     Alert.alert(
@@ -71,7 +89,7 @@ export default function ChildRemindersScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            await deleteReminder(reminderId);
+            await deleteReminder(reminder.id);
           },
         },
       ]

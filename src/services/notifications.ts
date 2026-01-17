@@ -93,6 +93,9 @@ export const registerForPushNotifications = async (): Promise<string | null> => 
   }
 };
 
+// Auto-miss timeout duration (1 minute)
+export const REMINDER_TIMEOUT_MS = 60 * 1000;
+
 // Schedule local notification for reminder with custom alarm sound
 export const scheduleReminderNotification = async (
   reminderId: string,
@@ -131,6 +134,31 @@ export const scheduleReminderNotification = async (
   return identifier;
 };
 
+// Schedule auto-miss notification (fires 1 minute after reminder to mark as missed)
+export const scheduleAutoMissNotification = async (
+  reminderId: string,
+  triggerDate: Date
+): Promise<string> => {
+  const missTime = new Date(triggerDate.getTime() + REMINDER_TIMEOUT_MS);
+  
+  const identifier = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Reminder Missed',
+      body: 'A reminder was not responded to.',
+      data: { type: 'reminder_auto_miss', reminderId } as Record<string, unknown>,
+      sound: false, // Silent notification
+      priority: Notifications.AndroidNotificationPriority.DEFAULT,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: missTime,
+      channelId: Platform.OS === 'android' ? 'default' : undefined,
+    },
+  });
+
+  return identifier;
+};
+
 // Cancel scheduled notification
 export const cancelNotification = async (
   notificationId: string
@@ -144,16 +172,24 @@ export const cancelAllNotifications = async (): Promise<void> => {
 };
 
 // Setup notification response listener
-export const setupNotificationListeners = (): () => void => {
+export const setupNotificationListeners = (
+  onReminderTriggered?: (reminderId: string) => Promise<void>,
+  onReminderAutoMiss?: (reminderId: string) => Promise<void>
+): () => void => {
   // Handle notification received while app is foregrounded
   // For reminders, automatically open the alarm modal
   const receivedSubscription = Notifications.addNotificationReceivedListener(
-    (notification) => {
+    async (notification) => {
       console.log('Notification received:', notification);
       const data = notification.request.content.data as unknown as NotificationData;
       
-      // Auto-open full screen alarm for reminder notifications
+      // Handle reminder notification - open alarm screen and mark trigger time
       if (data?.type === 'reminder' && data.reminderId) {
+        // Mark alarm as triggered (for timeout tracking)
+        if (onReminderTriggered) {
+          await onReminderTriggered(data.reminderId);
+        }
+        
         // Small delay to ensure app is ready
         setTimeout(() => {
           router.push({
@@ -161,6 +197,13 @@ export const setupNotificationListeners = (): () => void => {
             params: { reminderId: data.reminderId },
           });
         }, 500);
+      }
+      
+      // Handle auto-miss notification (fires 1 minute after reminder)
+      if (data?.type === 'reminder_auto_miss' && data.reminderId) {
+        if (onReminderAutoMiss) {
+          await onReminderAutoMiss(data.reminderId);
+        }
       }
       
       // Auto-open emergency alert
@@ -177,8 +220,13 @@ export const setupNotificationListeners = (): () => void => {
 
   // Handle notification tap (when user taps the notification)
   const responseSubscription =
-    Notifications.addNotificationResponseReceivedListener((response) => {
+    Notifications.addNotificationResponseReceivedListener(async (response) => {
       const data = response.notification.request.content.data as unknown as NotificationData;
+
+      // For reminder notifications tapped from background, mark trigger time
+      if (data?.type === 'reminder' && data.reminderId && onReminderTriggered) {
+        await onReminderTriggered(data.reminderId);
+      }
 
       handleNotificationTap(data);
     });

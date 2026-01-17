@@ -60,6 +60,8 @@ export const Input: React.FC<InputProps> = ({
           placeholderTextColor={colors.text.tertiary}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
+          autoComplete="off"
+          autoCorrect={false}
           {...props}
         />
         
@@ -117,6 +119,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.base,
     color: colors.text.primary,
     height: '100%',
+    backgroundColor: 'transparent',
   },
   rightIconButton: {
     padding: spacing[2],

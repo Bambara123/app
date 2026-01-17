@@ -113,6 +113,19 @@ export default function RoleSelectionScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              // Clear the role from Firebase first (so on next login, role-selection shows again)
+              if (user?.id) {
+                try {
+                  const { userService } = await import('../../src/services/firebase/firestore');
+                  await userService.updateUser(user.id, { 
+                    role: null,
+                    profileSetupComplete: false,
+                  });
+                } catch (error) {
+                  console.log('Failed to clear role from Firebase');
+                }
+              }
+              
               // Sign out from Firebase
               try {
                 const { auth } = await import('../../src/services/firebase/config');

@@ -22,6 +22,8 @@ interface MessageInputProps {
   onSendImage: (uri: string) => void;
   onSendVoice?: (uri: string, duration: number) => void;
   isSending?: boolean;
+  isConnected?: boolean;
+  onNotConnectedPress?: () => void;
 }
 
 export const MessageInput: React.FC<MessageInputProps> = ({
@@ -29,6 +31,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   onSendImage,
   onSendVoice,
   isSending = false,
+  isConnected = true,
+  onNotConnectedPress,
 }) => {
   const [message, setMessage] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -45,6 +49,11 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   };
 
   const handlePickImage = async () => {
+    if (!isConnected) {
+      onNotConnectedPress?.();
+      return;
+    }
+    
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
@@ -56,6 +65,11 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   };
 
   const handleCamera = async () => {
+    if (!isConnected) {
+      onNotConnectedPress?.();
+      return;
+    }
+    
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) return;
 
@@ -233,18 +247,26 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         {/* Attachment buttons */}
         <TouchableOpacity
           onPress={handlePickImage}
-          style={styles.iconButton}
+          style={[styles.iconButton, !isConnected && styles.iconButtonDisabled]}
           disabled={isSending}
         >
-          <Ionicons name="image-outline" size={24} color={colors.text.secondary} />
+          <Ionicons 
+            name="image-outline" 
+            size={24} 
+            color={!isConnected ? colors.neutral[300] : colors.text.secondary} 
+          />
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={handleCamera}
-          style={styles.iconButton}
+          style={[styles.iconButton, !isConnected && styles.iconButtonDisabled]}
           disabled={isSending}
         >
-          <Ionicons name="camera-outline" size={24} color={colors.text.secondary} />
+          <Ionicons 
+            name="camera-outline" 
+            size={24} 
+            color={!isConnected ? colors.neutral[300] : colors.text.secondary} 
+          />
         </TouchableOpacity>
 
         {/* Text input */}
@@ -302,6 +324,9 @@ const styles = StyleSheet.create({
     padding: spacing[2],
     marginRight: spacing[1],
   },
+  iconButtonDisabled: {
+    opacity: 0.5,
+  },
   inputContainer: {
     flex: 1,
     backgroundColor: colors.neutral[100],
@@ -316,6 +341,7 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     minHeight: 36,
     maxHeight: 80,
+    backgroundColor: 'transparent',
   },
   sendButton: {
     width: 44,

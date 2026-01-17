@@ -1,7 +1,7 @@
 // app/modals/emergency-alert.tsx
 // Emergency alert modal for child
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Linking, Vibration, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,10 +21,9 @@ if (Platform.OS !== 'web') {
 
 export default function EmergencyAlertScreen() {
   const { alertId } = useLocalSearchParams<{ alertId: string }>();
-  const { activeAlerts, acknowledgeAlert, resolveAlert } = useEmergencyStore();
+  const { activeAlerts, acknowledgeAlert } = useEmergencyStore();
   const { partner } = useUserStore();
   const { user } = useAuthStore();
-  const [acknowledged, setAcknowledged] = useState(false);
 
   // Get display name for partner (use partnerCallName if set)
   const partnerDisplayName = user?.partnerCallName || partner?.name || 'Your parent';
@@ -45,27 +44,20 @@ export default function EmergencyAlertScreen() {
   const handleAcknowledge = async () => {
     if (alertId) {
       await acknowledgeAlert(alertId);
-      setAcknowledged(true);
       if (Platform.OS !== 'web') {
         Vibration.cancel();
       }
-    }
-  };
-
-  const handleCall = () => {
-    if (partner?.phone) {
-      Linking.openURL(`tel:${partner.phone}`);
-    }
-  };
-
-  const handleResolve = async () => {
-    if (alertId) {
-      await resolveAlert(alertId);
-      router.back();
+      // Navigate directly to home screen
+      router.replace('/(child)');
     }
   };
 
   const handleOpenMaps = () => {
+    // Stop vibration when user clicks to view map
+    if (Platform.OS !== 'web') {
+      Vibration.cancel();
+    }
+    
     if (alert?.location) {
       const { latitude, longitude } = alert.location;
       const url = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
@@ -117,12 +109,14 @@ export default function EmergencyAlertScreen() {
         {MapView && (
           <MapView
             style={styles.map}
-            initialRegion={{
+            region={{
               latitude: alert.location.latitude,
               longitude: alert.location.longitude,
               latitudeDelta: 0.01,
               longitudeDelta: 0.01,
             }}
+            showsUserLocation={false}
+            showsMyLocationButton={false}
           >
             {Marker && (
               <Marker
@@ -131,6 +125,7 @@ export default function EmergencyAlertScreen() {
                   longitude: alert.location.longitude,
                 }}
                 title={partnerDisplayName}
+                description={alert.location.address || undefined}
               />
             )}
           </MapView>
@@ -175,58 +170,25 @@ export default function EmergencyAlertScreen() {
 
         {/* Actions */}
         <View style={styles.actions}>
-          {!acknowledged ? (
-            <>
-              <Button
-                title="I'm on it!"
-                onPress={handleAcknowledge}
-                variant="danger"
-                size="lg"
-                fullWidth
-                icon={<Ionicons name="hand-right" size={24} color={colors.neutral.white} />}
-              />
-              
-              {/* Show View on Map even before acknowledging */}
-              {alert.location && (
-                <Button
-                  title="View on Map"
-                  onPress={handleOpenMaps}
-                  variant="outline"
-                  size="lg"
-                  fullWidth
-                  icon={<Ionicons name="map-outline" size={24} color={colors.danger.main} />}
-                />
-              )}
-            </>
-          ) : (
-            <>
-              <Button
-                title="Call Now"
-                onPress={handleCall}
-                variant="primary"
-                size="lg"
-                fullWidth
-                icon={<Ionicons name="call" size={24} color={colors.neutral.white} />}
-              />
-
-              {alert.location && (
-                <Button
-                  title="Open in Maps"
-                  onPress={handleOpenMaps}
-                  variant="secondary"
-                  size="lg"
-                  fullWidth
-                  icon={<Ionicons name="navigate" size={24} color={colors.primary[500]} />}
-                />
-              )}
-
-              <Button
-                title="Mark as Resolved"
-                onPress={handleResolve}
-                variant="tertiary"
-                size="md"
-              />
-            </>
+          <Button
+            title="I'm on it!"
+            onPress={handleAcknowledge}
+            variant="danger"
+            size="lg"
+            fullWidth
+            icon={<Ionicons name="hand-right" size={24} color={colors.neutral.white} />}
+          />
+          
+          {/* Show View on Map option */}
+          {alert.location && (
+            <Button
+              title="View on Map"
+              onPress={handleOpenMaps}
+              variant="outline"
+              size="lg"
+              fullWidth
+              icon={<Ionicons name="map-outline" size={24} color={colors.danger.main} />}
+            />
           )}
         </View>
       </View>

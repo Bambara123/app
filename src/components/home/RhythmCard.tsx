@@ -70,9 +70,10 @@ export const RhythmCard: React.FC<RhythmCardProps> = ({
                 onBlur={handleSave}
                 onSubmitEditing={handleSave}
                 autoFocus
-                maxLength={50}
+                maxLength={60}
                 placeholder="What are you up to?"
                 placeholderTextColor={colors.text.tertiary}
+                multiline={false}
               />
               <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
                 <Ionicons name="checkmark" size={20} color={colors.primary[500]} />
@@ -84,7 +85,7 @@ export const RhythmCard: React.FC<RhythmCardProps> = ({
               disabled={!isEditable}
               style={styles.activityContainer}
             >
-              <Text style={styles.activity} numberOfLines={2}>
+              <Text style={styles.activity}>
                 {activity}
               </Text>
               {isEditable && (
@@ -110,10 +111,11 @@ const styles = StyleSheet.create({
   content: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   textContainer: {
     flex: 1,
+    marginRight: spacing[3],
   },
   label: {
     fontSize: typography.fontSize.xs,
@@ -124,15 +126,20 @@ const styles = StyleSheet.create({
   },
   activityContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    flex: 1,
+    paddingRight: spacing[2],
   },
   activity: {
     fontSize: typography.fontSize.base,
     color: colors.text.primary,
     fontWeight: '500',
+    flex: 1,
+    flexWrap: 'wrap',
   },
   editIcon: {
     marginLeft: spacing[2],
+    marginTop: spacing[1],
   },
   editContainer: {
     flexDirection: 'row',

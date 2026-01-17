@@ -1,11 +1,11 @@
 // app/(parent)/index.tsx
 // Parent Home Screen
 
-import React, { useEffect, useState } from 'react';
-import { View, ScrollView, StyleSheet, TouchableOpacity, Text } from 'react-native';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { View, ScrollView, StyleSheet, TouchableOpacity, Text, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import {
   GreetingCard,
   RhythmCard,
@@ -17,50 +17,105 @@ import { Card, Avatar, Button } from '../../src/components/common';
 import { useUserStore, useReminderStore, useEmergencyStore, useAuthStore } from '../../src/stores';
 import { colors, spacing, layout, typography } from '../../src/constants';
 import { startBatteryMonitoring } from '../../src/services/battery';
+import { startLocationMonitoring } from '../../src/services/location';
 
 export default function ParentHomeScreen() {
-  const { profile, partner, partnerNote, setDemoData, initialize: initUser } = useUserStore();
+  const { profile, partner, partnerNote, initialize: initUser } = useUserStore();
   const { user } = useAuthStore();
   const { reminders, initialize: initReminders } = useReminderStore();
-  const { triggerEmergency, isTriggering } = useEmergencyStore();
+  const { triggerEmergency, isTriggering, error: emergencyError } = useEmergencyStore();
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
 
   // Get the name to display for partner (use partnerCallName if set, otherwise partner's nickname or name)
   const partnerDisplayName = user?.partnerCallName || partner?.name || 'Family';
   const isConnected = !!user?.connectedTo;
 
-  // Initialize user data from auth store
+  // Track if monitoring is active to prevent duplicates
+  const monitoringActive = useRef(false);
+
+  // Initialize user data once (not on every focus)
   useEffect(() => {
-    if (user) {
-      setDemoData(user);
+    if (user?.id && !profile) {
       initUser(user.id);
     }
-  }, [user]);
+  }, [user?.id]);
 
-  // Initialize reminders
-  useEffect(() => {
-    if (profile?.id) {
-      const unsubscribe = initReminders(profile.id, true);
-      return unsubscribe;
-    }
-  }, [profile?.id]);
+  // Use focus effect to start/stop monitoring ONLY when screen is visible
+  // This prevents memory leaks and duplicate monitoring when switching between profiles
+  useFocusEffect(
+    useCallback(() => {
+      // Prevent duplicate monitoring if already active
+      if (monitoringActive.current) {
+        console.log('Monitoring already active, skipping...');
+        return;
+      }
 
-  // Start battery monitoring for parent device
-  useEffect(() => {
-    if (user?.id && user?.role === 'parent') {
-      const unsubscribe = startBatteryMonitoring(user.id, (level) => {
-        setBatteryLevel(level);
-      });
-      return unsubscribe;
-    }
-  }, [user?.id, user?.role]);
+      console.log('Parent screen focused - starting monitoring');
+      monitoringActive.current = true;
+      
+      const cleanupFunctions: Array<() => void> = [];
 
-  // Get recent reminder
-  const recentReminder = reminders.find((r) => r.status === 'pending');
+      // Only start monitoring if we have the required data
+      if (!profile?.id || !user?.id || user?.role !== 'parent') {
+        return;
+      }
+
+      // Initialize reminders
+      try {
+        const reminderUnsubscribe = initReminders(profile.id, true);
+        cleanupFunctions.push(reminderUnsubscribe);
+      } catch (error) {
+        console.error('Failed to initialize reminders:', error);
+      }
+
+      // Start battery monitoring (delayed by 2 seconds to avoid blocking UI)
+      try {
+        const batteryCleanup = startBatteryMonitoring(user.id, (level) => {
+          setBatteryLevel(level);
+        });
+        cleanupFunctions.push(batteryCleanup);
+      } catch (error) {
+        console.error('Failed to start battery monitoring:', error);
+      }
+
+      // Start location monitoring (delayed by 1 second to avoid blocking UI)
+      try {
+        const locationCleanup = startLocationMonitoring(user.id);
+        cleanupFunctions.push(locationCleanup);
+      } catch (error) {
+        console.error('Failed to start location monitoring:', error);
+      }
+
+      // Cleanup when screen loses focus or unmounts
+      return () => {
+        console.log('Parent screen unfocused - stopping ALL monitoring');
+        monitoringActive.current = false;
+        
+        // Execute all cleanup functions
+        cleanupFunctions.forEach((cleanup) => {
+          try {
+            cleanup();
+          } catch (error) {
+            console.error('Cleanup error:', error);
+          }
+        });
+      };
+    }, [profile?.id, user?.id, user?.role, initReminders])
+  );
+
+  // Get recent reminder (memoized to avoid recalculation on every render)
+  const recentReminder = useMemo(() => {
+    return reminders.find((r) => r.status === 'pending');
+  }, [reminders]);
 
   const handleEmergency = async () => {
     if (profile?.id && partner?.id) {
-      await triggerEmergency(profile.id, partner.id);
+      try {
+        await triggerEmergency(profile.id, partner.id);
+        Alert.alert('Emergency Sent', 'Your emergency alert has been sent to your caregiver.');
+      } catch (error: any) {
+        Alert.alert('Cannot Send Emergency', error.message || 'Failed to send emergency alert. Please try again.');
+      }
     }
   };
 
@@ -82,11 +137,6 @@ export default function ParentHomeScreen() {
   const handleReminderDone = async (reminderId: string) => {
     const { markAsDone } = useReminderStore.getState();
     await markAsDone(reminderId);
-  };
-
-  const handleReminderSnooze = async (reminderId: string) => {
-    const { snooze } = useReminderStore.getState();
-    await snooze(reminderId);
   };
 
   return (
@@ -119,7 +169,6 @@ export default function ParentHomeScreen() {
         <StatusCard
           partnerName={partnerDisplayName}
           batteryLevel={batteryLevel ?? profile?.batteryPercentage ?? null}
-          mood={profile?.mood || null}
           isParent={true}
           onEmergency={isConnected ? handleEmergency : undefined}
           isEmergencyLoading={isTriggering}
@@ -184,7 +233,6 @@ export default function ParentHomeScreen() {
               reminder={recentReminder}
               isParent
               onDone={() => handleReminderDone(recentReminder.id)}
-              onSnooze={() => handleReminderSnooze(recentReminder.id)}
             />
           </View>
         )}

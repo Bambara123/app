@@ -173,7 +173,7 @@ export default function LoginScreen() {
     } else {
       Alert.alert(
         'Google Sign-In',
-        'Google Sign-In requires a development build.\n\nPlease use Email/Password or Demo Mode.',
+        'Google Sign-In requires a development build.\n\nPlease use Email/Password.',
         [{ text: 'OK' }]
       );
     }
@@ -182,14 +182,9 @@ export default function LoginScreen() {
   const handleAppleSignIn = () => {
     Alert.alert(
       'Apple Sign-In',
-      'Apple Sign-In requires a development build.\n\nPlease use Email/Password or Demo Mode.',
+      'Apple Sign-In requires a development build.\n\nPlease use Email/Password.',
       [{ text: 'OK' }]
     );
-  };
-
-  const handleDemoSignIn = () => {
-    demoSignIn();
-    router.replace('/(auth)/role-selection');
   };
 
   const toggleAuthMode = () => {

@@ -2,79 +2,23 @@
 // Chat state management
 
 import { create } from 'zustand';
-import { isDemoMode } from '../services/firebase/config';
 import { ChatRoom, Message, SendMessageInput, MessageType } from '../types';
-
-// Demo chat messages for testing
-const DEMO_MESSAGES: Message[] = [
-  {
-    id: 'demo-msg-1',
-    chatRoomId: 'demo-chat-room',
-    senderId: 'demo-partner-456',
-    type: 'text',
-    content: 'Good morning, dear! How are you today?',
-    mediaUrl: null,
-    duration: null,
-    status: 'read',
-    createdAt: new Date(Date.now() - 3600000), // 1 hour ago
-    updatedAt: new Date(Date.now() - 3600000),
-  },
-  {
-    id: 'demo-msg-2',
-    chatRoomId: 'demo-chat-room',
-    senderId: 'demo-user-123',
-    type: 'text',
-    content: "Hi Mom! I'm doing great. Just wanted to check in on you 💕",
-    mediaUrl: null,
-    duration: null,
-    status: 'read',
-    createdAt: new Date(Date.now() - 3500000), // 58 minutes ago
-    updatedAt: new Date(Date.now() - 3500000),
-  },
-  {
-    id: 'demo-msg-3',
-    chatRoomId: 'demo-chat-room',
-    senderId: 'demo-partner-456',
-    type: 'text',
-    content: "I'm wonderful! Just had breakfast and took my medicine on time today.",
-    mediaUrl: null,
-    duration: null,
-    status: 'read',
-    createdAt: new Date(Date.now() - 3400000),
-    updatedAt: new Date(Date.now() - 3400000),
-  },
-  {
-    id: 'demo-msg-4',
-    chatRoomId: 'demo-chat-room',
-    senderId: 'demo-user-123',
-    type: 'text',
-    content: "That's great to hear! Don't forget your doctor's appointment tomorrow at 10am.",
-    mediaUrl: null,
-    duration: null,
-    status: 'sent',
-    createdAt: new Date(Date.now() - 1800000), // 30 minutes ago
-    updatedAt: new Date(Date.now() - 1800000),
-  },
-];
-
-const DEMO_CHAT_ROOM: ChatRoom = {
-  id: 'demo-chat-room',
-  participants: ['demo-user-123', 'demo-partner-456'],
-  lastMessage: DEMO_MESSAGES[DEMO_MESSAGES.length - 1],
-  createdAt: new Date(),
-  updatedAt: new Date(),
-};
+import { QueryDocumentSnapshot } from 'firebase/firestore';
 
 interface ChatState {
   // State
   chatRoom: ChatRoom | null;
   messages: Message[];
   isLoading: boolean;
+  isLoadingMore: boolean;
   isSending: boolean;
+  hasMoreMessages: boolean;
+  lastDoc: QueryDocumentSnapshot | null;
   error: string | null;
 
   // Actions
   initialize: (participants: string[]) => Promise<() => void>;
+  loadMore: () => Promise<void>;
   sendMessage: (
     senderId: string,
     type: MessageType,
@@ -90,33 +34,47 @@ export const useChatStore = create<ChatState>((set, get) => ({
   chatRoom: null,
   messages: [],
   isLoading: false,
+  isLoadingMore: false,
   isSending: false,
+  hasMoreMessages: true,
+  lastDoc: null,
   error: null,
 
-  // Initialize chat room and messages subscription
+  // Initialize chat room - load initial messages + subscribe to new ones
   initialize: async (participants: string[]) => {
     set({ isLoading: true, error: null });
-
-    // Demo mode
-    if (isDemoMode) {
-      set({
-        chatRoom: DEMO_CHAT_ROOM,
-        messages: DEMO_MESSAGES,
-        isLoading: false,
-      });
-      return () => {};
-    }
 
     try {
       const { chatService } = await import('../services/firebase/firestore');
 
+      // Get or create chat room
       const chatRoom = await chatService.getOrCreateChatRoom(participants);
       set({ chatRoom });
 
-      const unsubscribe = chatService.subscribeToMessages(
+      // Load initial messages (most recent 20)
+      const { messages, lastDoc } = await chatService.loadInitialMessages(
         chatRoom.id,
-        (messages) => {
-          set({ messages, isLoading: false });
+        20
+      );
+      
+      set({ 
+        messages, 
+        lastDoc,
+        hasMoreMessages: messages.length >= 20,
+        isLoading: false 
+      });
+
+      // Subscribe to NEW messages only (real-time)
+      const latestMessageTime = messages.length > 0 
+        ? messages[messages.length - 1].createdAt 
+        : new Date();
+
+      const unsubscribe = chatService.subscribeToNewMessages(
+        chatRoom.id,
+        latestMessageTime,
+        (newMessages) => {
+          const { messages: currentMessages } = get();
+          set({ messages: [...currentMessages, ...newMessages] });
         }
       );
 
@@ -130,6 +88,38 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
+  // Load more older messages
+  loadMore: async () => {
+    const { chatRoom, lastDoc, isLoadingMore, hasMoreMessages } = get();
+    
+    if (!chatRoom || !lastDoc || isLoadingMore || !hasMoreMessages) {
+      return;
+    }
+
+    set({ isLoadingMore: true });
+
+    try {
+      const { chatService } = await import('../services/firebase/firestore');
+      
+      const { messages: olderMessages, lastDoc: newLastDoc, hasMore } = 
+        await chatService.loadMoreMessages(chatRoom.id, lastDoc, 20);
+      
+      const { messages: currentMessages } = get();
+      
+      set({
+        messages: [...olderMessages, ...currentMessages],
+        lastDoc: newLastDoc,
+        hasMoreMessages: hasMore,
+        isLoadingMore: false,
+      });
+    } catch (error: any) {
+      set({
+        error: error.message || 'Failed to load more messages',
+        isLoadingMore: false,
+      });
+    }
+  },
+
   // Send message
   sendMessage: async (
     senderId: string,
@@ -138,32 +128,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     mediaUri?: string,
     duration?: number
   ) => {
-    const { chatRoom, messages } = get();
+    const { chatRoom } = get();
     if (!chatRoom) return;
 
     set({ isSending: true, error: null });
-
-    // Demo mode
-    if (isDemoMode) {
-      const newMessage: Message = {
-        id: `demo-msg-${Date.now()}`,
-        chatRoomId: chatRoom.id,
-        senderId,
-        type,
-        content,
-        mediaUrl: mediaUri || null,
-        duration: duration || null,
-        status: 'sent',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      set({
-        messages: [...messages, newMessage],
-        chatRoom: { ...chatRoom, lastMessage: newMessage, updatedAt: new Date() },
-        isSending: false,
-      });
-      return;
-    }
 
     try {
       const { chatService } = await import('../services/firebase/firestore');
@@ -205,7 +173,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       chatRoom: null,
       messages: [],
       isLoading: false,
+      isLoadingMore: false,
       isSending: false,
+      hasMoreMessages: true,
+      lastDoc: null,
       error: null,
     });
   },

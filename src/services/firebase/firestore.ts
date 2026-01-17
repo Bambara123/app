@@ -19,6 +19,8 @@ import {
   DocumentData,
   QueryConstraint,
   getDocs,
+  startAfter,
+  QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from './config';
 import {
@@ -241,6 +243,24 @@ export const userService = {
       await deleteDoc(userRef);
     }
   },
+
+  async updateUserLocation(
+    userId: string,
+    location: { latitude: number; longitude: number; accuracy?: number; address?: string | null; timestamp: Date }
+  ): Promise<void> {
+    const userRef = doc(db, 'users', userId);
+    await updateDoc(userRef, {
+      lastLocation: {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        accuracy: location.accuracy || null,
+        address: location.address || null,
+        timestamp: Timestamp.fromDate(location.timestamp),
+      },
+      lastInteraction: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  },
 };
 
 // ============================================
@@ -421,6 +441,8 @@ export const reminderService = {
       customAlarmAudioUrl: null,
       followUpMinutes: input.followUpMinutes || 10,
       notificationId: null,
+      alarmTriggeredAt: null,
+      missNotificationId: null,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -537,6 +559,10 @@ export const reminderService = {
       customAlarmAudioUrl: data.customAlarmAudioUrl || null,
       followUpMinutes: data.followUpMinutes || 10,
       notificationId: data.notificationId || null,
+      alarmTriggeredAt: data.alarmTriggeredAt
+        ? timestampToDate(data.alarmTriggeredAt)
+        : null,
+      missNotificationId: data.missNotificationId || null,
       createdAt: timestampToDate(data.createdAt),
       updatedAt: timestampToDate(data.updatedAt),
     };
@@ -624,6 +650,72 @@ export const chatService = {
     };
   },
 
+  // Load initial messages (most recent N messages)
+  async loadInitialMessages(
+    chatRoomId: string,
+    pageSize: number = 20
+  ): Promise<{ messages: Message[]; lastDoc: QueryDocumentSnapshot | null }> {
+    const messagesQuery = query(
+      collection(db, 'chatRooms', chatRoomId, 'messages'),
+      orderBy('createdAt', 'desc'),
+      limit(pageSize)
+    );
+
+    const snapshot = await getDocs(messagesQuery);
+    const messages = snapshot.docs.map((doc) =>
+      this.convertMessage(doc.data(), doc.id)
+    );
+    const lastDoc = snapshot.docs[snapshot.docs.length - 1] || null;
+    
+    return { messages: messages.reverse(), lastDoc };
+  },
+
+  // Load more (older) messages for pagination
+  async loadMoreMessages(
+    chatRoomId: string,
+    lastDoc: QueryDocumentSnapshot,
+    pageSize: number = 20
+  ): Promise<{ messages: Message[]; lastDoc: QueryDocumentSnapshot | null; hasMore: boolean }> {
+    const messagesQuery = query(
+      collection(db, 'chatRooms', chatRoomId, 'messages'),
+      orderBy('createdAt', 'desc'),
+      startAfter(lastDoc),
+      limit(pageSize)
+    );
+
+    const snapshot = await getDocs(messagesQuery);
+    const messages = snapshot.docs.map((doc) =>
+      this.convertMessage(doc.data(), doc.id)
+    );
+    const newLastDoc = snapshot.docs[snapshot.docs.length - 1] || null;
+    const hasMore = snapshot.docs.length === pageSize;
+    
+    return { messages: messages.reverse(), lastDoc: newLastDoc, hasMore };
+  },
+
+  // Subscribe to NEW messages only (for real-time updates)
+  subscribeToNewMessages(
+    chatRoomId: string,
+    afterTimestamp: Date,
+    callback: (newMessages: Message[]) => void
+  ): () => void {
+    const messagesQuery = query(
+      collection(db, 'chatRooms', chatRoomId, 'messages'),
+      where('createdAt', '>', Timestamp.fromDate(afterTimestamp)),
+      orderBy('createdAt', 'asc')
+    );
+
+    return onSnapshot(messagesQuery, (snapshot) => {
+      const newMessages = snapshot.docs.map((doc) =>
+        this.convertMessage(doc.data(), doc.id)
+      );
+      if (newMessages.length > 0) {
+        callback(newMessages);
+      }
+    });
+  },
+
+  // Keep the old method for backward compatibility (deprecated)
   subscribeToMessages(
     chatRoomId: string,
     callback: (messages: Message[]) => void
@@ -678,11 +770,29 @@ export const chatService = {
 // ============================================
 
 export const emergencyService = {
+  // Check if there's an active (unacknowledged) alert from this user
+  async hasActiveAlert(triggeredBy: string): Promise<boolean> {
+    const alertsQuery = query(
+      collection(db, 'emergencyAlerts'),
+      where('triggeredBy', '==', triggeredBy),
+      where('status', '==', 'active'),
+      limit(1)
+    );
+    const snapshot = await getDocs(alertsQuery);
+    return !snapshot.empty;
+  },
+
   async triggerEmergency(
     triggeredBy: string,
     notifyUser: string,
     location: Location | null
   ): Promise<EmergencyAlert> {
+    // Check for existing active alert first
+    const hasActive = await this.hasActiveAlert(triggeredBy);
+    if (hasActive) {
+      throw new Error('You already have an active emergency alert. Please wait for it to be acknowledged.');
+    }
+
     const alertRef = collection(db, 'emergencyAlerts');
     const newAlert = {
       triggeredBy,

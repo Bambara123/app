@@ -2,7 +2,6 @@
 // Reminder state management
 
 import { create } from 'zustand';
-import { isDemoMode } from '../services/firebase/config';
 import {
   Reminder,
   CreateReminderInput,
@@ -10,77 +9,6 @@ import {
   ReminderFilterLabel,
   ReminderFilterStatus,
 } from '../types';
-
-// Demo reminders for testing
-const DEMO_REMINDERS: Reminder[] = [
-  {
-    id: 'demo-reminder-1',
-    createdBy: 'demo-user-123',
-    forUser: 'demo-partner-456',
-    title: 'Take morning medicine',
-    description: 'Blood pressure pills with breakfast',
-    dateTime: new Date(Date.now() + 30 * 60 * 1000), // 30 min from now
-    repeat: 'daily',
-    customRepeat: null,
-    label: 'medicine',
-    icon: 'medical',
-    status: 'pending',
-    completedAt: null,
-    snoozedUntil: null,
-    snoozeCount: 0,
-    missCount: 0,
-    customAlarmAudioUrl: null,
-    followUpMinutes: 10,
-    notificationId: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'demo-reminder-2',
-    createdBy: 'demo-user-123',
-    forUser: 'demo-partner-456',
-    title: 'Lunch time',
-    description: 'Have a healthy meal',
-    dateTime: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
-    repeat: 'daily',
-    customRepeat: null,
-    label: 'meal',
-    icon: 'restaurant',
-    status: 'pending',
-    completedAt: null,
-    snoozedUntil: null,
-    snoozeCount: 0,
-    missCount: 0,
-    customAlarmAudioUrl: null,
-    followUpMinutes: 10,
-    notificationId: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'demo-reminder-3',
-    createdBy: 'demo-user-123',
-    forUser: 'demo-partner-456',
-    title: 'Doctor appointment',
-    description: 'Annual checkup at City Hospital',
-    dateTime: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
-    repeat: 'none',
-    customRepeat: null,
-    label: 'doctor',
-    icon: 'medkit',
-    status: 'pending',
-    completedAt: null,
-    snoozedUntil: null,
-    snoozeCount: 0,
-    missCount: 0,
-    customAlarmAudioUrl: null,
-    followUpMinutes: 10,
-    notificationId: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-];
-
 interface ReminderState {
   // State
   reminders: Reminder[];
@@ -99,9 +27,15 @@ interface ReminderState {
   ) => Promise<Reminder>;
   updateReminder: (reminderId: string, data: Partial<Reminder>) => Promise<void>;
   deleteReminder: (reminderId: string) => Promise<void>;
-  markAsDone: (reminderId: string, childUserId?: string | null, reminderTitle?: string) => Promise<void>;
-  markAsMissed: (reminderId: string, childUserId?: string | null, reminderTitle?: string, followUpMinutes?: number) => Promise<void>;
-  snooze: (reminderId: string, minutes?: number, childUserId?: string | null, currentSnoozeCount?: number, reminderTitle?: string) => Promise<void>;
+  markAsDone: (reminderId: string, childUserId?: string | null, reminderTitle?: string, parentNickname?: string | null) => Promise<void>;
+  markAsMissed: (reminderId: string, childUserId?: string | null, reminderTitle?: string, followUpMinutes?: number, parentNickname?: string | null) => Promise<void>;
+  snooze: (reminderId: string, minutes?: number, childUserId?: string | null, currentSnoozeCount?: number, reminderTitle?: string, followUpMinutes?: number, parentNickname?: string | null) => Promise<void>;
+  // Handle when reminder alarm is triggered (for timeout tracking)
+  handleAlarmTriggered: (reminderId: string) => Promise<void>;
+  // Handle auto-miss when timeout expires
+  handleAutoMiss: (reminderId: string, childUserId?: string | null, parentNickname?: string | null) => Promise<void>;
+  // Check if reminder has timed out
+  isReminderTimedOut: (reminderId: string) => boolean;
   setFilters: (filters: Partial<ReminderFilters>) => void;
   setSelectedReminder: (reminder: Reminder | null) => void;
   reset: () => void;
@@ -150,17 +84,6 @@ export const useReminderStore = create<ReminderState>((set, get) => ({
 
   // Initialize reminders subscription
   initialize: (userId: string, isParent: boolean) => {
-    // Demo mode - use demo reminders
-    if (isDemoMode) {
-      const { filters } = get();
-      set({
-        reminders: DEMO_REMINDERS,
-        filteredReminders: applyFilters(DEMO_REMINDERS, filters),
-        isLoading: false,
-      });
-      return () => {};
-    }
-
     set({ isLoading: true });
 
     const initFirebase = async () => {
@@ -180,8 +103,8 @@ export const useReminderStore = create<ReminderState>((set, get) => ({
           }
         );
       } catch (error) {
-        console.warn('Failed to initialize reminders:', error);
-        set({ isLoading: false });
+        console.error('Failed to initialize reminders:', error);
+        set({ isLoading: false, error: 'Failed to load reminders' });
         return () => {};
       }
     };
@@ -203,51 +126,6 @@ export const useReminderStore = create<ReminderState>((set, get) => ({
     input: CreateReminderInput
   ) => {
     set({ isLoading: true, error: null });
-
-    // Demo mode - add to local list
-    if (isDemoMode) {
-      const getLabelIcon = (label: string): string => {
-        const icons: Record<string, string> = {
-          medicine: 'medical',
-          meal: 'restaurant',
-          doctor: 'medkit',
-          exercise: 'fitness',
-          other: 'notifications',
-        };
-        return icons[label] || 'notifications';
-      };
-
-      const newReminder: Reminder = {
-        id: `demo-reminder-${Date.now()}`,
-        createdBy,
-        forUser,
-        title: input.title,
-        description: input.description || null,
-        dateTime: input.dateTime,
-        repeat: input.repeat,
-        customRepeat: input.customRepeat || null,
-        label: input.label,
-        icon: getLabelIcon(input.label),
-        followUpMinutes: input.followUpMinutes || 10,
-        customAlarmAudioUrl: null,
-        status: 'pending',
-        completedAt: null,
-        snoozedUntil: null,
-        snoozeCount: 0,
-        missCount: 0,
-        notificationId: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      const { reminders, filters } = get();
-      const newReminders = [newReminder, ...reminders];
-      set({
-        reminders: newReminders,
-        filteredReminders: applyFilters(newReminders, filters),
-        isLoading: false,
-      });
-      return newReminder;
-    }
 
     try {
       const { reminderService } = await import('../services/firebase/firestore');
@@ -282,19 +160,6 @@ export const useReminderStore = create<ReminderState>((set, get) => ({
   // Update reminder
   updateReminder: async (reminderId: string, data: Partial<Reminder>) => {
     set({ isLoading: true, error: null });
-
-    if (isDemoMode) {
-      const { reminders, filters } = get();
-      const newReminders = reminders.map((r) =>
-        r.id === reminderId ? { ...r, ...data, updatedAt: new Date() } : r
-      );
-      set({
-        reminders: newReminders,
-        filteredReminders: applyFilters(newReminders, filters),
-        isLoading: false,
-      });
-      return;
-    }
 
     try {
       const { reminderService } = await import('../services/firebase/firestore');
@@ -334,17 +199,6 @@ export const useReminderStore = create<ReminderState>((set, get) => ({
   deleteReminder: async (reminderId: string) => {
     set({ isLoading: true, error: null });
 
-    if (isDemoMode) {
-      const { reminders, filters } = get();
-      const newReminders = reminders.filter((r) => r.id !== reminderId);
-      set({
-        reminders: newReminders,
-        filteredReminders: applyFilters(newReminders, filters),
-        isLoading: false,
-      });
-      return;
-    }
-
     try {
       const { reminderService } = await import('../services/firebase/firestore');
       const { cancelNotification } = await import('../services/notifications');
@@ -368,22 +222,8 @@ export const useReminderStore = create<ReminderState>((set, get) => ({
   },
 
   // Mark reminder as done
-  markAsDone: async (reminderId: string, childUserId?: string | null, reminderTitle?: string) => {
+  markAsDone: async (reminderId: string, childUserId?: string | null, reminderTitle?: string, parentNickname?: string | null) => {
     set({ error: null });
-
-    if (isDemoMode) {
-      const { reminders, filters } = get();
-      const newReminders = reminders.map((r) =>
-        r.id === reminderId
-          ? { ...r, status: 'done' as const, completedAt: new Date() }
-          : r
-      );
-      set({
-        reminders: newReminders,
-        filteredReminders: applyFilters(newReminders, filters),
-      });
-      return;
-    }
 
     try {
       const { reminderService } = await import('../services/firebase/firestore');
@@ -401,9 +241,10 @@ export const useReminderStore = create<ReminderState>((set, get) => ({
       // Send notification to child/caregiver that parent completed the task
       if (childUserId) {
         const title = reminderTitle || reminder?.title || 'Reminder';
+        const parentName = parentNickname || 'Your parent';
         await sendLocalNotification(
           '✅ Task Completed',
-          `Great news! Your parent completed "${title}".`,
+          `Great news! ${parentName} completed "${title}".`,
           { type: 'reminder_done', reminderId }
         );
       }
@@ -413,145 +254,330 @@ export const useReminderStore = create<ReminderState>((set, get) => ({
     }
   },
 
-  // Mark reminder as missed (auto-timeout after 1 minute)
-  markAsMissed: async (reminderId: string, childUserId?: string | null, reminderTitle?: string, followUpMinutes?: number) => {
+  // Mark reminder as missed (auto-timeout after 1 minute, max 2 rings total)
+  markAsMissed: async (reminderId: string, childUserId?: string | null, reminderTitle?: string, followUpMinutes?: number, parentNickname?: string | null) => {
     set({ error: null });
 
-    if (isDemoMode) {
-      const { reminders, filters } = get();
-      const newReminders = reminders.map((r) =>
-        r.id === reminderId
-          ? { ...r, status: 'missed' as const, missCount: r.missCount + 1 }
-          : r
-      );
-      set({
-        reminders: newReminders,
-        filteredReminders: applyFilters(newReminders, filters),
-      });
-      return;
-    }
+    const { reminders } = get();
+    const reminder = reminders.find((r) => r.id === reminderId);
+    const snoozeCount = reminder?.snoozeCount ?? 0;
+    const missCount = reminder?.missCount ?? 0;
+    const totalAttempts = snoozeCount + missCount;
 
     try {
       const { reminderService } = await import('../services/firebase/firestore');
       const { cancelNotification, sendLocalNotification, scheduleReminderNotification } = await import('../services/notifications');
 
-      const { reminders } = get();
-      const reminder = reminders.find((r) => r.id === reminderId);
-      const currentMissCount = reminder?.missCount || 0;
-
       if (reminder?.notificationId) {
         await cancelNotification(reminder.notificationId);
       }
 
-      // Update reminder status to missed and increment missCount
-      await reminderService.updateReminder(reminderId, { 
-        status: 'missed', 
-        missCount: currentMissCount + 1 
-      });
+      const parentName = parentNickname || 'Your parent';
 
-      // Send notification to child/caregiver
-      if (childUserId) {
-        const title = reminderTitle || reminder?.title || 'Reminder';
-        
-        if (currentMissCount >= 1) {
-          // 2nd miss - escalation
+      // If this is the 2nd ring (already snoozed or missed once), make status final and notify child
+      if (totalAttempts >= 1) {
+        // Final status - missed, no more rescheduling
+        await reminderService.updateReminder(reminderId, { 
+          status: 'missed', 
+          missCount: missCount + 1 
+        });
+
+        // Send urgent notification to child
+        if (childUserId) {
+          const title = reminderTitle || reminder?.title || 'Reminder';
           await sendLocalNotification(
-            '🚨 Urgent: Missed Again',
-            `Your parent has missed "${title}" for the second time. Better to call and check on them.`,
-            { type: 'reminder_missed_urgent', reminderId }
+            '🚨 Check on Your Parent',
+            `${parentName} has not done "${title}". Better to call and check on them.`,
+            { type: 'reminder_escalation', reminderId }
           );
-        } else {
-          // First miss
+        }
+      } else {
+        // First miss - reschedule for follow-up
+        await reminderService.updateReminder(reminderId, { 
+          status: 'missed', 
+          missCount: missCount + 1 
+        });
+
+        // Notify child about miss
+        if (childUserId) {
+          const title = reminderTitle || reminder?.title || 'Reminder';
+          const rescheduleMinutes = followUpMinutes || reminder?.followUpMinutes || 10;
           await sendLocalNotification(
             '⏰ Reminder Missed',
-            `Your parent didn't respond to "${title}". The reminder will ring again in ${followUpMinutes || reminder?.followUpMinutes || 10} minutes.`,
+            `${parentName} didn't respond to "${title}". It will ring again in ${rescheduleMinutes} minutes.`,
             { type: 'reminder_missed', reminderId }
           );
         }
+
+        // Schedule the reminder to ring again after followUpMinutes
+        const rescheduleMinutes = followUpMinutes || reminder?.followUpMinutes || 10;
+        const rescheduleTime = new Date(Date.now() + rescheduleMinutes * 60 * 1000);
+        const notificationId = await scheduleReminderNotification(
+          reminderId,
+          reminder?.title || 'Reminder',
+          `Missed reminder: ${reminder?.description || 'Please check this reminder!'}`,
+          rescheduleTime
+        );
+
+        await reminderService.updateReminder(reminderId, { 
+          notificationId,
+          dateTime: rescheduleTime,
+          status: 'pending' // Reset to pending for the 2nd ring
+        });
       }
-
-      // Schedule the reminder to ring again after followUpMinutes
-      const rescheduleTime = new Date(Date.now() + (followUpMinutes || reminder?.followUpMinutes || 10) * 60 * 1000);
-      const notificationId = await scheduleReminderNotification(
-        reminderId,
-        reminder?.title || 'Reminder',
-        `Missed reminder: ${reminder?.description || 'Please check this reminder!'}`,
-        rescheduleTime
-      );
-
-      await reminderService.updateReminder(reminderId, { 
-        notificationId,
-        dateTime: rescheduleTime,
-        status: 'pending' // Reset to pending for the next ring
-      });
     } catch (error: any) {
       set({ error: error.message || 'Failed to mark as missed' });
       throw error;
     }
   },
 
-  // Snooze reminder
-  snooze: async (reminderId: string, minutes = 10, childUserId?: string | null, currentSnoozeCount?: number, reminderTitle?: string, followUpMinutes?: number) => {
+  // Snooze reminder (max 1 snooze = 2 rings total)
+  snooze: async (reminderId: string, minutes = 10, childUserId?: string | null, currentSnoozeCount?: number, reminderTitle?: string, followUpMinutes?: number, parentNickname?: string | null) => {
     set({ error: null });
 
-    if (isDemoMode) {
-      const { reminders, filters } = get();
-      const snoozedUntil = new Date(Date.now() + minutes * 60 * 1000);
-      const newReminders = reminders.map((r) =>
-        r.id === reminderId
-          ? { ...r, status: 'snoozed' as const, snoozedUntil, snoozeCount: r.snoozeCount + 1 }
-          : r
-      );
-      set({
-        reminders: newReminders,
-        filteredReminders: applyFilters(newReminders, filters),
-      });
-      return;
-    }
+    const { reminders } = get();
+    const reminder = reminders.find((r) => r.id === reminderId);
+    const snoozeCount = currentSnoozeCount ?? reminder?.snoozeCount ?? 0;
+    const missCount = reminder?.missCount ?? 0;
+    const totalAttempts = snoozeCount + missCount;
 
     try {
       const { reminderService } = await import('../services/firebase/firestore');
       const { scheduleReminderNotification, cancelNotification, sendLocalNotification } = await import('../services/notifications');
 
-      const { reminders } = get();
-      const reminder = reminders.find((r) => r.id === reminderId);
-      const snoozeCount = currentSnoozeCount ?? reminder?.snoozeCount ?? 0;
       const rescheduleMinutes = followUpMinutes || reminder?.followUpMinutes || 10;
 
       if (reminder?.notificationId) {
         await cancelNotification(reminder.notificationId);
       }
 
-      await reminderService.snooze(reminderId, rescheduleMinutes);
+      const parentName = parentNickname || 'Your parent';
 
-      // Schedule reminder to ring again after followUpMinutes (not the 10min snooze button)
-      const snoozedUntil = new Date(Date.now() + rescheduleMinutes * 60 * 1000);
-      const notificationId = await scheduleReminderNotification(
-        reminderId,
-        reminder?.title || 'Reminder',
-        `Snoozed reminder: ${reminder?.description || 'Time for your reminder!'}`,
-        snoozedUntil
-      );
+      // If this is the 2nd ring (already snoozed or missed once), make status final and notify child
+      if (totalAttempts >= 1) {
+        // Final status - snoozed, no more rescheduling
+        await reminderService.updateReminder(reminderId, { 
+          status: 'snoozed',
+          snoozeCount: snoozeCount + 1,
+          snoozedUntil: new Date()
+        });
 
-      await reminderService.updateReminder(reminderId, { 
-        notificationId,
-        dateTime: snoozedUntil,
-        status: 'pending' // Reset to pending for the next ring
-      });
+        // Send urgent notification to child
+        if (childUserId) {
+          const title = reminderTitle || reminder?.title || 'Reminder';
+          await sendLocalNotification(
+            '🚨 Check on Your Parent',
+            `${parentName} has not done "${title}". Better to call and check on them.`,
+            { type: 'reminder_escalation', reminderId }
+          );
+        }
+      } else {
+        // First snooze - reschedule for follow-up
+        await reminderService.snooze(reminderId, rescheduleMinutes);
 
-      // Always send notification to child/caregiver when parent snoozes
-      if (childUserId) {
-        const title = reminderTitle || reminder?.title || 'Reminder';
-        await sendLocalNotification(
-          '😴 Reminder Snoozed',
-          `Your parent snoozed "${title}". It will ring again in ${rescheduleMinutes} minutes.`,
-          { type: 'reminder_snoozed', reminderId }
+        const snoozedUntil = new Date(Date.now() + rescheduleMinutes * 60 * 1000);
+        const notificationId = await scheduleReminderNotification(
+          reminderId,
+          reminder?.title || 'Reminder',
+          `Snoozed reminder: ${reminder?.description || 'Time for your reminder!'}`,
+          snoozedUntil
         );
+
+        await reminderService.updateReminder(reminderId, { 
+          notificationId,
+          dateTime: snoozedUntil,
+          status: 'pending' // Reset to pending for the 2nd ring
+        });
+
+        // Notify child about snooze
+        if (childUserId) {
+          const title = reminderTitle || reminder?.title || 'Reminder';
+          await sendLocalNotification(
+            '😴 Reminder Snoozed',
+            `${parentName} snoozed "${title}". It will ring again in ${rescheduleMinutes} minutes.`,
+            { type: 'reminder_snoozed', reminderId }
+          );
+        }
       }
     } catch (error: any) {
       set({ error: error.message || 'Failed to snooze' });
       throw error;
     }
+  },
+
+  // Handle when reminder alarm is triggered (marks trigger time for timeout tracking)
+  handleAlarmTriggered: async (reminderId: string) => {
+    console.log('handleAlarmTriggered', reminderId);
+    try {
+      const { reminderService } = await import('../services/firebase/firestore');
+      const { scheduleAutoMissNotification } = await import('../services/notifications');
+
+      const { reminders, filters } = get();
+      const reminder = reminders.find((r) => r.id === reminderId);
+
+      // Only mark trigger if not already triggered and still pending
+      if (reminder && !reminder.alarmTriggeredAt && reminder.status === 'pending') {
+        const triggerTime = new Date();
+        
+        // Schedule auto-miss notification for 1 minute later
+        const missNotificationId = await scheduleAutoMissNotification(reminderId, triggerTime);
+
+        await reminderService.updateReminder(reminderId, {
+          alarmTriggeredAt: triggerTime,
+          missNotificationId,
+        });
+
+        // Update local state immediately
+        const updatedReminders = reminders.map((r) =>
+          r.id === reminderId
+            ? {
+                ...r,
+                alarmTriggeredAt: triggerTime,
+                missNotificationId,
+              }
+            : r
+        );
+        set({
+          reminders: updatedReminders,
+          filteredReminders: applyFilters(updatedReminders, filters),
+        });
+      }
+    } catch (error) {
+      console.error('Failed to mark alarm triggered:', error);
+    }
+  },
+
+  // Handle auto-miss when timeout expires (called by notification or when checking status)
+  handleAutoMiss: async (reminderId: string, childUserId?: string | null, parentNickname?: string | null) => {
+    try {
+      console.log('handleAutoMiss', reminderId, childUserId, parentNickname);
+      const { reminderService } = await import('../services/firebase/firestore');
+      const { cancelNotification, sendLocalNotification, scheduleReminderNotification } = await import('../services/notifications');
+
+      const { reminders, filters } = get();
+      const reminder = reminders.find((r) => r.id === reminderId);
+
+      // Only process if reminder is still pending (user hasn't acted yet)
+      if (!reminder || reminder.status !== 'pending') {
+        return;
+      }
+
+      const snoozeCount = reminder.snoozeCount ?? 0;
+      const missCount = reminder.missCount ?? 0;
+      const totalAttempts = snoozeCount + missCount;
+      const parentName = parentNickname || 'Your parent';
+
+      // Cancel any existing notifications
+      if (reminder.notificationId) {
+        await cancelNotification(reminder.notificationId);
+      }
+      if (reminder.missNotificationId) {
+        await cancelNotification(reminder.missNotificationId);
+      }
+
+      console.log('totalAttempts', totalAttempts, missCount, snoozeCount);
+      // If this is the 2nd ring (already snoozed or missed once), make status final
+      if (totalAttempts >= 1) {
+        await reminderService.updateReminder(reminderId, {
+          status: 'missed',
+          missCount: missCount + 1,
+          alarmTriggeredAt: null,
+          missNotificationId: null,
+        });
+
+        // Update local state immediately
+        const updatedReminders = reminders.map((r) =>
+          r.id === reminderId
+            ? {
+                ...r,
+                status: 'missed' as const,
+                missCount: missCount + 1,
+                alarmTriggeredAt: null,
+                missNotificationId: null,
+              }
+            : r
+        );
+        set({
+          reminders: updatedReminders,
+          filteredReminders: applyFilters(updatedReminders, filters),
+        });
+
+        // Send urgent notification to child
+        if (childUserId) {
+          await sendLocalNotification(
+            '🚨 Check on Your Parent',
+            `${parentName} has not done "${reminder.title}". Better to call and check on them.`,
+            { type: 'reminder_escalation', reminderId }
+          );
+        }
+      } else {
+        // First miss - reschedule for follow-up
+        const rescheduleMinutes = reminder.followUpMinutes || 10;
+        const rescheduleTime = new Date(Date.now() + rescheduleMinutes * 60 * 1000);
+
+        const notificationId = await scheduleReminderNotification(
+          reminderId,
+          reminder.title,
+          `Missed reminder: ${reminder.description || 'Please check this reminder!'}`,
+          rescheduleTime
+        );
+
+        await reminderService.updateReminder(reminderId, {
+          status: 'pending',
+          missCount: missCount + 1,
+          dateTime: rescheduleTime,
+          notificationId,
+          alarmTriggeredAt: null,
+          missNotificationId: null,
+        });
+
+        // Update local state immediately
+        const updatedReminders = reminders.map((r) =>
+          r.id === reminderId
+            ? {
+                ...r,
+                status: 'pending' as const,
+                missCount: missCount + 1,
+                dateTime: rescheduleTime,
+                notificationId,
+                alarmTriggeredAt: null,
+                missNotificationId: null,
+              }
+            : r
+        );
+        set({
+          reminders: updatedReminders,
+          filteredReminders: applyFilters(updatedReminders, filters),
+        });
+
+        // Notify child about miss
+        if (childUserId) {
+          await sendLocalNotification(
+            '⏰ Reminder Missed',
+            `${parentName} didn't respond to "${reminder.title}". It will ring again in ${rescheduleMinutes} minutes.`,
+            { type: 'reminder_missed', reminderId }
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Failed to handle auto-miss:', error);
+    }
+  },
+
+  // Check if reminder has timed out (for UI to determine if alarm screen should show)
+  isReminderTimedOut: (reminderId: string) => {
+    const { reminders } = get();
+    const reminder = reminders.find((r) => r.id === reminderId);
+    
+    if (!reminder || !reminder.alarmTriggeredAt) {
+      return false;
+    }
+
+    const TIMEOUT_MS = 60 * 1000; // 1 minute
+    const triggerTime = reminder.alarmTriggeredAt.getTime();
+    const now = Date.now();
+    
+    return now - triggerTime >= TIMEOUT_MS;
   },
 
   // Set filters

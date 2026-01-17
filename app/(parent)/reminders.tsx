@@ -19,7 +19,6 @@ export default function ParentRemindersScreen() {
     setFilters,
     initialize,
     markAsDone,
-    snooze,
   } = useReminderStore();
 
   const isConnected = !!user?.connectedTo;
@@ -42,14 +41,6 @@ export default function ParentRemindersScreen() {
       return;
     }
     await markAsDone(reminderId);
-  };
-
-  const handleSnooze = async (reminderId: string) => {
-    if (!isConnected) {
-      handleNavigateToConnect();
-      return;
-    }
-    await snooze(reminderId);
   };
 
   return (
@@ -93,7 +84,6 @@ export default function ParentRemindersScreen() {
             reminder={item}
             isParent
             onDone={() => handleDone(item.id)}
-            onSnooze={() => handleSnooze(item.id)}
           />
         )}
         ListEmptyComponent={

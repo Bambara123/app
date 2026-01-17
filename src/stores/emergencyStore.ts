@@ -2,7 +2,6 @@
 // Emergency alert state management
 
 import { create } from 'zustand';
-import { isDemoMode } from '../services/firebase/config';
 import { EmergencyAlert, Location } from '../types';
 
 interface EmergencyState {
@@ -30,12 +29,6 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
 
   // Initialize emergency alerts subscription
   initialize: (userId: string) => {
-    if (isDemoMode) {
-      // Demo mode - no active alerts by default
-      set({ activeAlerts: [] });
-      return () => {};
-    }
-
     const initFirebase = async () => {
       try {
         const { emergencyService } = await import('../services/firebase/firestore');
@@ -43,7 +36,8 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
           set({ activeAlerts: alerts });
         });
       } catch (error) {
-        console.warn('Failed to initialize emergency store:', error);
+        console.error('Failed to initialize emergency store:', error);
+        set({ error: 'Failed to load emergency alerts' });
         return () => {};
       }
     };
@@ -63,29 +57,16 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
     set({ isTriggering: true, error: null });
 
     try {
-      const location = await get().getCurrentLocation();
-
-      if (isDemoMode) {
-        // Demo mode - just simulate triggering
-        console.log('Demo: Emergency triggered!', { userId, notifyUserId, location });
-        const demoAlert: EmergencyAlert = {
-          id: `demo-alert-${Date.now()}`,
-          triggeredBy: userId,
-          notifyUser: notifyUserId,
-          location,
-          status: 'triggered',
-          triggeredAt: new Date(),
-          acknowledgedAt: null,
-          resolvedAt: null,
-        };
-        set({
-          activeAlerts: [demoAlert],
-          isTriggering: false,
-        });
-        return;
+      // Check for existing active alert first
+      const { emergencyService } = await import('../services/firebase/firestore');
+      const hasActive = await emergencyService.hasActiveAlert(userId);
+      if (hasActive) {
+        set({ isTriggering: false });
+        throw new Error('You already have an active emergency alert. Please wait for your child to acknowledge it before sending another.');
       }
 
-      const { emergencyService } = await import('../services/firebase/firestore');
+      const location = await get().getCurrentLocation();
+
       await emergencyService.triggerEmergency(userId, notifyUserId, location);
       set({ isTriggering: false });
     } catch (error: any) {
@@ -99,18 +80,6 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
 
   // Acknowledge alert (child receives it)
   acknowledgeAlert: async (alertId: string) => {
-    if (isDemoMode) {
-      const { activeAlerts } = get();
-      set({
-        activeAlerts: activeAlerts.map((a) =>
-          a.id === alertId
-            ? { ...a, status: 'acknowledged' as const, acknowledgedAt: new Date() }
-            : a
-        ),
-      });
-      return;
-    }
-
     try {
       const { emergencyService } = await import('../services/firebase/firestore');
       await emergencyService.acknowledgeAlert(alertId);
@@ -122,14 +91,6 @@ export const useEmergencyStore = create<EmergencyState>((set, get) => ({
 
   // Resolve alert (mark as handled)
   resolveAlert: async (alertId: string) => {
-    if (isDemoMode) {
-      const { activeAlerts } = get();
-      set({
-        activeAlerts: activeAlerts.filter((a) => a.id !== alertId),
-      });
-      return;
-    }
-
     try {
       const { emergencyService } = await import('../services/firebase/firestore');
       await emergencyService.resolveAlert(alertId);

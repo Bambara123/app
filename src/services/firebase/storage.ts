@@ -18,7 +18,7 @@ export interface UploadResult {
 // Image compression settings - optimized for smaller file sizes
 const IMAGE_COMPRESSION_SETTINGS = {
   profile: { maxWidth: 300, maxHeight: 300, quality: 0.5 },
-  chat: { maxWidth: 800, maxHeight: 800, quality: 0.5 },
+  chat: { maxWidth: 800, quality: 0.5 },
   album: { maxWidth: 1000, maxHeight: 1000, quality: 0.6 },
   thumbnail: { maxWidth: 150, maxHeight: 150, quality: 0.4 },
 };
@@ -29,9 +29,28 @@ const compressImage = async (
   settings: { maxWidth: number; maxHeight: number; quality: number }
 ): Promise<string> => {
   try {
+    // Get image dimensions first
+    const { width, height } = await ImageManipulator.manipulateAsync(
+      uri,
+      [],
+      { format: ImageManipulator.SaveFormat.JPEG }
+    );
+    
+    // Calculate resize dimensions while maintaining aspect ratio
+    const aspectRatio = width / height;
+    let resizeWidth = settings.maxWidth;
+    let resizeHeight = resizeWidth / aspectRatio;
+    
+    // If height exceeds max, recalculate based on height
+    if (resizeHeight > settings.maxHeight) {
+      resizeHeight = settings.maxHeight;
+      resizeWidth = resizeHeight * aspectRatio;
+    }
+    
+    // Resize with only width specified (maintains aspect ratio)
     const result = await ImageManipulator.manipulateAsync(
       uri,
-      [{ resize: { width: settings.maxWidth, height: settings.maxHeight } }],
+      [{ resize: { width: resizeWidth } }], // Only specify width, height auto-calculated
       {
         compress: settings.quality,
         format: ImageManipulator.SaveFormat.JPEG,
@@ -40,7 +59,7 @@ const compressImage = async (
     return result.uri;
   } catch (error) {
     console.warn('Image compression failed, using original:', error);
-    return uri; // Return original if compression fails
+    return uri;
   }
 };
 

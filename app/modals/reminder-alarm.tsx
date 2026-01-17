@@ -2,28 +2,50 @@
 // Reminder alarm modal for parent
 
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Vibration } from 'react-native';
+import { View, Text, StyleSheet, Vibration, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { format } from 'date-fns';
 import { Audio } from 'expo-av';
 import { Button } from '../../src/components/common';
-import { useReminderStore, useAuthStore } from '../../src/stores';
+import { useReminderStore, useAuthStore, useUserStore } from '../../src/stores';
 import { colors, spacing, typography, radius, reminderIcons } from '../../src/constants';
 
-const AUTO_TIMEOUT_MS = 60 * 1000; // 1 minute auto-timeout
+const AUTO_TIMEOUT_MS = 20 * 1000; // 1 minute auto-timeout
 
 export default function ReminderAlarmScreen() {
   const { reminderId } = useLocalSearchParams<{ reminderId: string }>();
-  const { reminders, markAsDone, markAsMissed, snooze } = useReminderStore();
+  const { reminders, markAsDone, snooze, isReminderTimedOut, handleAutoMiss, handleAlarmTriggered } = useReminderStore();
   const { user } = useAuthStore();
+  const { profile } = useUserStore();
   const soundRef = useRef<Audio.Sound | null>(null);
   const autoTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasCheckedTimeout = useRef(false);
 
   const reminder = reminders.find((r) => r.id === reminderId);
+  const parentNickname = profile?.nickname || profile?.name || 'Your parent';
 
   useEffect(() => {
+    // Check if reminder has already timed out (e.g., user opened app late)
+    if (reminderId && !hasCheckedTimeout.current) {
+      hasCheckedTimeout.current = true;
+      
+      // Check timeout status
+      const timedOut = isReminderTimedOut(reminderId);
+      const alreadyActioned = reminder && reminder.status !== 'pending';
+      
+      if (timedOut || alreadyActioned) {
+        // Timeout already passed or reminder already handled, just go back
+        console.log('Reminder timed out or already handled, navigating back');
+        router.back();
+        return;
+      }
+      
+      // Mark alarm as triggered (for background timeout tracking)
+      handleAlarmTriggered(reminderId);
+    }
+
     // Set up audio mode
     const setupAudio = async () => {
       await Audio.setAudioModeAsync({
@@ -57,16 +79,11 @@ export default function ReminderAlarmScreen() {
     };
     playRingtone();
 
-    // Auto-timeout after 1 minute - mark as missed
+    // Auto-timeout after 1 minute - mark as missed using the new handler
     autoTimeoutRef.current = setTimeout(async () => {
-      if (reminderId && reminder) {
+      if (reminderId) {
         await stopAlarm();
-        await markAsMissed(
-          reminderId, 
-          user?.connectedTo, 
-          reminder.title, 
-          reminder.followUpMinutes
-        );
+        await handleAutoMiss(reminderId, user?.connectedTo, parentNickname);
         router.back();
       }
     }, AUTO_TIMEOUT_MS);
@@ -103,7 +120,7 @@ export default function ReminderAlarmScreen() {
     if (reminderId && reminder) {
       await stopAlarm();
       // Notify the adult child that parent completed the task
-      await markAsDone(reminderId, user?.connectedTo, reminder.title);
+      await markAsDone(reminderId, user?.connectedTo, reminder.title, parentNickname);
       router.back();
     }
   };
@@ -118,7 +135,8 @@ export default function ReminderAlarmScreen() {
         user?.connectedTo, 
         reminder.snoozeCount, 
         reminder.title,
-        reminder.followUpMinutes
+        reminder.followUpMinutes,
+        parentNickname
       );
       router.back();
     }
@@ -145,6 +163,10 @@ export default function ReminderAlarmScreen() {
   };
 
   const accentColor = labelColors[reminder.label] || colors.primary[500];
+  
+  // Check if this is the 2nd ring (snooze only allowed once = max 2 rings)
+  const totalAttempts = (reminder.snoozeCount || 0) + (reminder.missCount || 0);
+  const canSnooze = totalAttempts < 1; // Only allow snooze on 1st ring
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: `${accentColor}15` }]}>
@@ -182,6 +204,16 @@ export default function ReminderAlarmScreen() {
 
       {/* Actions */}
       <View style={styles.actions}>
+        {/* Show warning message on 2nd ring (final reminder) */}
+        {!canSnooze && (
+          <View style={styles.finalRingBadge}>
+            <Ionicons name="warning" size={18} color={colors.warning.dark} />
+            <Text style={styles.finalRingText}>
+              This is your final reminder. Please do it now!
+            </Text>
+          </View>
+        )}
+
         <Button
           title="Done ✓"
           onPress={handleDone}
@@ -276,6 +308,21 @@ const styles = StyleSheet.create({
   noReminderText: {
     fontSize: typography.fontSize.xl,
     color: colors.text.secondary,
+  },
+  finalRingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.warning.light,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+    borderRadius: radius.lg,
+    gap: spacing[2],
+  },
+  finalRingText: {
+    flex: 1,
+    fontSize: typography.fontSize.sm,
+    color: colors.warning.dark,
+    fontWeight: '500',
   },
 });
 

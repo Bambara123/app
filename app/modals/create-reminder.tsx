@@ -303,7 +303,7 @@ export default function CreateReminderModal() {
           {/* Follow-up Time */}
           <Text style={styles.sectionLabel}>Follow-up reminder (if not done)</Text>
           <View style={styles.followUpContainer}>
-            {['5', '10', '15', '30'].map((mins) => (
+            {['2', '5', '10', '15', '30'].map((mins) => (
               <TouchableOpacity
                 key={mins}
                 style={[

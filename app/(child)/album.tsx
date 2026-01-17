@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { VaultCard } from '../../src/components/album';
 import { useAlbumStore, useUserStore, useAuthStore } from '../../src/stores';
@@ -54,6 +55,12 @@ export default function ChildAlbumScreen() {
   }, [connection?.id, profile?.id, partner?.id]);
 
   const handleAddPhoto = async () => {
+    // Check if user is connected first
+    if (!user?.connectedTo) {
+      router.push('/(auth)/partner-connection');
+      return;
+    }
+
     try {
       // Request permission first
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();

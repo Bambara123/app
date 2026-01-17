@@ -135,6 +135,10 @@ export interface Reminder {
   customAlarmAudioUrl: string | null;
   followUpMinutes: number;
   notificationId: string | null;
+  // Track when alarm was triggered for timeout handling
+  alarmTriggeredAt: Date | null;
+  // Scheduled notification ID for auto-miss
+  missNotificationId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -260,7 +264,9 @@ export type NotificationType =
   | 'reminder_done'
   | 'reminder_snoozed'
   | 'reminder_missed'
-  | 'reminder_missed_urgent';
+  | 'reminder_missed_urgent'
+  | 'reminder_escalation'
+  | 'reminder_auto_miss';
 
 export interface NotificationData {
   type: NotificationType;

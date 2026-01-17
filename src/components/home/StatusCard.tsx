@@ -2,41 +2,58 @@
 // Parent status card showing battery, mood, and emergency button
 
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from '../common';
 import { BatteryCard } from './BatteryCard';
 import { EmergencyButton } from './EmergencyButton';
-import { colors, spacing, typography, moodIcons } from '../../constants';
-import { Mood } from '../../types';
+import { colors, spacing, typography, radius } from '../../constants';
+import { GeoLocation } from '../../types';
 
 interface StatusCardProps {
   partnerName: string;
   batteryLevel: number | null;
-  mood: Mood | null;
   isParent: boolean;
   onEmergency?: () => void;
   isEmergencyLoading?: boolean;
+  // For child view - parent's location
+  partnerLocation?: GeoLocation | null;
 }
-
-const getMoodColor = (mood: Mood | null): string => {
-  const moodColors: Record<Mood, string> = {
-    happy: colors.success.main,
-    neutral: colors.warning.main,
-    sad: colors.primary[500],
-    tired: colors.accent.main,
-  };
-  return mood ? moodColors[mood] : colors.neutral[400];
-};
 
 export const StatusCard: React.FC<StatusCardProps> = ({
   partnerName,
   batteryLevel,
-  mood,
   isParent,
   onEmergency,
   isEmergencyLoading,
+  partnerLocation,
 }) => {
+  const handleOpenMaps = () => {
+    if (!partnerLocation) {
+      Alert.alert('Location Not Available', `${partnerName}'s location is not available yet.`);
+      return;
+    }
+
+    const { latitude, longitude } = partnerLocation;
+    const label = encodeURIComponent(`${partnerName}'s Location`);
+
+    // Try to open in Apple Maps first on iOS, otherwise use Google Maps
+    if (Platform.OS === 'ios') {
+      const appleMapsUrl = `maps:0,0?q=${label}@${latitude},${longitude}`;
+      Linking.canOpenURL(appleMapsUrl).then((supported) => {
+        if (supported) {
+          Linking.openURL(appleMapsUrl);
+        } else {
+          // Fallback to Google Maps
+          Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`);
+        }
+      });
+    } else {
+      // Android - use Google Maps
+      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`);
+    }
+  };
+
   return (
     <Card variant="elevated" style={styles.container}>
       <Text style={styles.label}>
@@ -50,7 +67,7 @@ export const StatusCard: React.FC<StatusCardProps> = ({
           label={isParent ? 'My Battery' : `${partnerName}'s Battery`}
         />
 
-        {/* Mood or Emergency */}
+        {/* Emergency button for parent view */}
         {isParent ? (
           onEmergency && (
             <EmergencyButton
@@ -60,14 +77,17 @@ export const StatusCard: React.FC<StatusCardProps> = ({
             />
           )
         ) : (
-          <View style={styles.moodCard}>
+          /* Map button - for child view, takes full remaining space */
+          <TouchableOpacity style={styles.mapButton} onPress={handleOpenMaps}>
             <Ionicons
-              name={(moodIcons[mood || 'neutral'] || 'help-circle') as any}
-              size={32}
-              color={getMoodColor(mood)}
+              name="location"
+              size={28}
+              color={partnerLocation ? colors.primary[500] : colors.neutral[400]}
             />
-            <Text style={styles.moodText}>{mood || 'Unknown'}</Text>
-          </View>
+            <Text style={[styles.mapButtonText, !partnerLocation && styles.mapButtonTextDisabled]}>
+              View {partnerName}'s location
+            </Text>
+          </TouchableOpacity>
         )}
       </View>
     </Card>
@@ -87,19 +107,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[3],
   },
-  moodCard: {
+  mapButton: {
     flex: 1,
     backgroundColor: colors.neutral[50],
-    borderRadius: 12,
+    borderRadius: radius.lg,
     padding: spacing[3],
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: spacing[2],
   },
-  moodText: {
-    fontSize: typography.fontSize.xs,
-    color: colors.text.secondary,
-    marginTop: spacing[1],
-    textTransform: 'capitalize',
+  mapButtonText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.primary[500],
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  mapButtonTextDisabled: {
+    color: colors.neutral[400],
   },
 });
 
