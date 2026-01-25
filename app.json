@@ -21,7 +21,8 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "ElderCare needs background location access to keep your family updated about your whereabouts.",
         "NSCameraUsageDescription": "ElderCare needs camera access to take photos for the shared album.",
         "NSPhotoLibraryUsageDescription": "ElderCare needs photo library access to share memories with your family.",
-        "NSMicrophoneUsageDescription": "ElderCare needs microphone access to send voice messages."
+        "NSMicrophoneUsageDescription": "ElderCare needs microphone access to send voice messages.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -32,14 +33,14 @@
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "RECORD_AUDIO",
-        "VIBRATE"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.VIBRATE"
       ]
     },
     "plugins": [
@@ -60,13 +61,18 @@
       [
         "expo-notifications",
         {
-          "sounds": ["./assets/sounds/reminder.wav"]
+          "sounds": [
+            "./assets/sounds/reminder.aac"
+          ]
         }
       ]
     ],
     "extra": {
       "router": {
         "origin": "https://eldercare.app"
+      },
+      "eas": {
+        "projectId": "5adea553-9ccb-431b-8014-e68494d42f6b"
       }
     }
   }

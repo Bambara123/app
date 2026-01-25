@@ -66,7 +66,7 @@ export const registerForPushNotifications = async (): Promise<string | null> => 
       await Notifications.setNotificationChannelAsync('reminders', {
         name: 'Reminders',
         importance: Notifications.AndroidImportance.HIGH,
-        sound: 'reminder.wav', // Custom alarm sound
+        sound: 'reminder.aac', // Custom alarm sound
         vibrationPattern: [0, 500, 500, 500],
         enableVibrate: true,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
@@ -76,7 +76,7 @@ export const registerForPushNotifications = async (): Promise<string | null> => 
       await Notifications.setNotificationChannelAsync('emergency', {
         name: 'Emergency',
         importance: Notifications.AndroidImportance.MAX,
-        sound: 'reminder.wav', // Use same alarm sound for emergencies
+        sound: 'reminder.aac', // Use same alarm sound for emergencies
         vibrationPattern: [0, 1000, 500, 1000],
         lightColor: '#EF5350',
         enableVibrate: true,
@@ -117,10 +117,10 @@ export const scheduleReminderNotification = async (
       data: { type: 'reminder', reminderId } as Record<string, unknown>,
       // Use custom alarm sound (max 30 seconds on iOS)
       // Falls back to default if file not found
-      sound: 'reminder.wav',
+      sound: 'reminder.aac',
       priority: Notifications.AndroidNotificationPriority.HIGH,
       // iOS 15+ time sensitive - breaks through Focus/DND
-      ...(Platform.OS === 'ios' && { 
+      ...(Platform.OS === 'ios' && {
         interruptionLevel: 'timeSensitive' as const,
       }),
     },
@@ -140,7 +140,7 @@ export const scheduleAutoMissNotification = async (
   triggerDate: Date
 ): Promise<string> => {
   const missTime = new Date(triggerDate.getTime() + REMINDER_TIMEOUT_MS);
-  
+
   const identifier = await Notifications.scheduleNotificationAsync({
     content: {
       title: 'Reminder Missed',
@@ -182,14 +182,14 @@ export const setupNotificationListeners = (
     async (notification) => {
       console.log('Notification received:', notification);
       const data = notification.request.content.data as unknown as NotificationData;
-      
+
       // Handle reminder notification - open alarm screen and mark trigger time
       if (data?.type === 'reminder' && data.reminderId) {
         // Mark alarm as triggered (for timeout tracking)
         if (onReminderTriggered) {
           await onReminderTriggered(data.reminderId);
         }
-        
+
         // Small delay to ensure app is ready
         setTimeout(() => {
           router.push({
@@ -198,14 +198,14 @@ export const setupNotificationListeners = (
           });
         }, 500);
       }
-      
+
       // Handle auto-miss notification (fires 1 minute after reminder)
       if (data?.type === 'reminder_auto_miss' && data.reminderId) {
         if (onReminderAutoMiss) {
           await onReminderAutoMiss(data.reminderId);
         }
       }
-      
+
       // Auto-open emergency alert
       if (data?.type === 'emergency' && data.alertId) {
         setTimeout(() => {
@@ -275,17 +275,17 @@ export const sendLocalNotification = async (
 ): Promise<void> => {
   // Determine if this is a reminder-related notification that needs alarm sound
   const isReminderAlert = data?.type?.includes('reminder');
-  
+
   await Notifications.scheduleNotificationAsync({
     content: {
       title,
       body,
       data: data as Record<string, unknown> | undefined,
       // Use alarm sound for reminder alerts, default for others
-      sound: isReminderAlert ? 'reminder.wav' : true,
+      sound: isReminderAlert ? 'reminder.aac' : true,
       priority: Notifications.AndroidNotificationPriority.HIGH,
       // iOS 15+ time sensitive for urgent notifications
-      ...(Platform.OS === 'ios' && { 
+      ...(Platform.OS === 'ios' && {
         interruptionLevel: 'timeSensitive' as const,
       }),
     },
