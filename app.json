@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mycompany.eldercare",
+      "bundleIdentifier": "com.ourcompany.eldercare",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "ElderCare needs your location to share with your family member during emergencies.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "ElderCare needs background location access to keep your family updated about your whereabouts.",
@@ -26,7 +26,7 @@
       }
     },
     "android": {
-      "package": "com.mycompany.eldercare",
+      "package": "com.ourcompany.eldercare",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FBF9F7"
