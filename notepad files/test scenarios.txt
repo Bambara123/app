@@ -1,0 +1,14 @@
+Daily reminder - with repeat.
+
+Reminder works ?
+- In app 
+- Background
+- 
+Emergency button click works ? 
+- On background
+- On in app
+
+
+
+
+C

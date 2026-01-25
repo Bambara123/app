@@ -1,0 +1,47 @@
+
+
+1. Send adult child a notification, if the mom has snoozed the alarm or done the task.
+We need to stop ringing alarm after 1 mins of doing nothing (setting neither snooze or done) and send a notification to adult child saying your mom didn't see your reminder. as explained task can have 3 states (missed, snoozes or done) There should be 3 notification texts to them.
+2. Missed and snooze all types should be reminded again after the time the adult child set when the reminder is created.
+3. If the alarm is missed for 2nd time again should be sent a notification "Your mom has forgot something for the second time, better to call and check".
+3. "Video call on WhatsApp"  is too long so change it to "Video Call". once user click on the button, user should get a prompt like "YOu will be navigated to WhatsApp. Make video call on WhatsApp" it should have ok button only and it should be called only first time user click on the button. then no need.
+
+
+
+
+
+Please validate whether the reminders logic is correct.
+
+Once adult child set a reminder It will ring at the correct time. The reminder can be put to 3 states.
+1. done - if parent click on done -  task is done so nobody can do anything to task (adult child cannot update)
+2. snoozed - if parent click on snooze (adult child cannot update it)
+3. missed - if parent did nothing on the reminder. (adult child cannot update it)
+
+if the task put to snoozed or missed state it will ring again after the followUpMinutes. After it ring for the second time, again task has 3 status
+
+1. done - if parent click on done
+2. snoozed - if parent click on snooze
+3. missed - if parent did nothing on the reminder.
+
+if done
+
+
+
+
+2. Before users get connected, should not be able to upload images for anyone.(Keep the buttons showing disabled, when click on button should navigate to the connect screen)
+3. Once an image is uploaded to chat, the aspect ratio should not be changed. its ok to crop it when it showing in the chat. Once click on the image it should show a preview of what is uploaded (not cropped).
+
+
+
+
+
+Once the application opens, add a loading icons to until it populate with the latest data. (Instead of dummy values)
+
+
+
+3. In the settings screen no need to have preferences like notifications and privacy. (this can be adjusted using system settings)
+
+
+
+
+

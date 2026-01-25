@@ -1,0 +1,42 @@
+Verify email option. (user should not be able to login with non existing email)
+forgot password option.
+
+
+Setup paywalls.
+
+Make reminders dismiss state when the app is on background and closed.
+Make reminder ringing when app is in background / killed. (Currently only the reminder send as notification)
+Setup apple id login.
+Setup google id login.
+
+
+# Superwall React Native Vibe Coding Guide
+This is an all-in-one prompt to get the Superwall SDK set up in your app.
+
+## Prerequisites
+
+You must have access to the Superwall Docs MCP. If you don't have it, ask me to add it, and refer me to the docs: [https://superwall.com/docs/sdk/guides/vibe-coding](https://superwall.com/docs/sdk/guides/vibe-coding)
+
+## Integration Steps
+
+1. Install the Superwall SDK
+2. Configure it with my API key: `pk_x1oemCKfj86tcZHplNWlr`
+3. Present a paywall
+4. Set up deep link handling
+5. Ask me about how I want to handle these two items:
+
+* Identifying the user
+* Setting user attributes
+
+## How to Implement a Step
+
+Implement each step one at a time. For each step, do the following:
+
+* Before starting, get context using the Superwall Docs MCP. Use it as the only source of truth for Superwall knowledge.
+* Then, help me implement the step as described in the Superwall Docs MCP response,
+* If needed, ask me for project-specific clarification.
+* Finally, test the step or instruct me on how to test it.
+* Explain to me what you did, what step is complete, and what step is next.
+
+
+bambaragamahmtm23

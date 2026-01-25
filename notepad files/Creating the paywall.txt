@@ -1,0 +1,122 @@
+Mobins 
+99 designs
+mixpanel for A/B testing
+- screendesign for paywall design
+
+
+his onboarding
+______________
+
+welcome - 4
+value screens - 4
+social proof 1
+
+Jitter notification animations
+
+yearly has 3 days free trial
+give some free downloads at the beginning
+if you can get 100 download and some good feedbacks the Appstore does the rest.
+approven - a place to promote your app.
+
+Change app store keywords for app to get new traffic.
+Target a small audience from a small geographical location when running adds. (For this you need to find out a need that small audience need)
+
+A point i think 
+- Make it not boring
+- This is your thing you should work on it.
+
+
+
+value screens -
+
+Smart Reminders -  allows adult children to create reminders for mom/dad. When the parents aging, they might have tendency to forget things more often like medicine, meals exercising etc.
+adult child can add reminder to ring/when the right time arrives. 
+Location tracking -  Realtime the adult child can see where the parent is.
+Battery tracking - child can see the status of parents battery. so if no reply he can think battery is gone/no need to worry thinking that mom/dad is trouble.
+Chat -  Have conversation endless with mom/dad share anything
+In emergency -  mom/ dad can send quick alarm in one click.
+album - moments/ photo sharing wall embedded into app that users can see and enjoy their relationship with mom/dad. (keep mom/dad happy)
+
+
+These are the feature in my app when point of view of adult child. I need 4/5 value screens with good flow.	
+
+
+Who are you caring for?
+
+My mother
+
+My father
+
+Both parents
+
+Another family member
+
+2️⃣ How often do you worry about them forgetting daily things?
+
+Rarely
+
+Sometimes
+
+Often
+
+Almost every day
+
+3️⃣ What worries you the most right now?
+
+Missing medicines
+
+Being alone during an emergency
+
+Not answering calls or messages
+
+Feeling lonely or disconnected
+
+All of the above
+
+4️⃣ When they don’t respond, what’s your first thought?
+
+They’re probably busy
+
+Their phone battery might be dead
+
+Something might be wrong
+
+I feel anxious until I hear back
+
+5️⃣ If something unexpected happened today, how confident would you feel?
+
+Very confident
+
+Somewhat confident
+
+Not very confident
+
+I’m not prepared at all
+
+6️⃣ What would bring you the most peace of mind?
+
+(This is the emotional peak)
+
+Knowing they’re safe at all times
+
+Helping them remember important things
+
+Staying emotionally connected every day
+
+Being ready before an emergency happens
+
+7. 
+
+Headline
+You’re not alone.
+Supporting text
+Families like yours use this app to stay connected, prepared, and at peace every day.
+
+along with some social proof down like 100000 + users.
+
+
+
+
+Smart Reminders 
+location and battery + emergency button
+Stay emotionally connected 
