@@ -97,6 +97,7 @@ export const openAppSettings = (): void => {
   if (Platform.OS === 'ios') {
     Linking.openURL('app-settings:');
   } else {
+    // Android-specific (not used - iOS-only app)
     Linking.openSettings();
   }
 };

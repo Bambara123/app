@@ -1,12 +1,13 @@
 // app/(child)/reminders.tsx
 // Child Reminders Screen (can create/edit/delete)
 
-import React, { useEffect, useState } from 'react';
-import { View, FlatList, StyleSheet, Text, TouchableOpacity, Alert } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, FlatList, StyleSheet, Text, TouchableOpacity, Alert, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { ReminderCard, ReminderFilters } from '../../src/components/reminders';
+import { LoadingList } from '../../src/components/common';
 import { useReminderStore, useUserStore, useAuthStore } from '../../src/stores';
 import { colors, spacing, typography, radius } from '../../src/constants';
 import { Reminder } from '../../src/types';
@@ -21,9 +22,12 @@ export default function ChildRemindersScreen() {
     initialize,
     deleteReminder,
     setSelectedReminder,
+    isLoading,
   } = useReminderStore();
 
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const isConnected = !!user?.connectedTo;
   const partnerDisplayName = user?.partnerCallName || partner?.name || 'Parent';
@@ -32,6 +36,27 @@ export default function ChildRemindersScreen() {
     if (profile?.id && isConnected) {
       const unsubscribe = initialize(profile.id, false);
       return unsubscribe;
+    }
+  }, [profile?.id, isConnected]);
+
+  // Track initial loading completion
+  useEffect(() => {
+    if (!isLoading && isInitialLoad) {
+      setIsInitialLoad(false);
+    }
+  }, [isLoading]);
+
+  // Pull to refresh handler
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      if (profile?.id && isConnected) {
+        initialize(profile.id, false);
+      }
+    } catch (error) {
+      console.error('Failed to refresh:', error);
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500);
     }
   }, [profile?.id, isConnected]);
 
@@ -71,11 +96,11 @@ export default function ChildRemindersScreen() {
       handleNavigateToConnect();
       return;
     }
-    // Cannot delete reminders that have been actioned (done, snoozed, missed)
-    if (reminder.status !== 'pending') {
+    // Cannot delete reminders that are already completed
+    if (reminder.status === 'done') {
       Alert.alert(
         'Cannot Delete',
-        `This reminder has been ${reminder.status}. You cannot delete it anymore.`,
+        'This reminder is already completed. You cannot delete it anymore.',
         [{ text: 'OK' }]
       );
       return;
@@ -133,28 +158,40 @@ export default function ChildRemindersScreen() {
       </View>
 
       {/* Reminders List */}
-      <FlatList
-        data={isConnected ? filteredReminders : []}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <ReminderCard
-            reminder={item}
-            isParent={false}
-            onPress={() => handleEditReminder(item)}
-          />
-        )}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons 
-              name={isConnected ? "alarm-outline" : "link-outline"} 
-              size={64} 
-              color={colors.neutral[300]} 
+      {isInitialLoad && isConnected ? (
+        <LoadingList count={5} type="reminder" />
+      ) : (
+        <FlatList
+          data={isConnected ? filteredReminders : []}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary[500]}
+              colors={[colors.primary[500]]}
             />
-            <Text style={styles.emptyText}>
-              {isConnected ? 'No reminders yet' : 'Not connected'}
-            </Text>
+          }
+          renderItem={({ item }) => (
+            <ReminderCard
+              reminder={item}
+              isParent={false}
+              onPress={() => handleEditReminder(item)}
+              onDelete={() => handleDeleteReminder(item)}
+            />
+          )}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons 
+                name={isConnected ? "alarm-outline" : "link-outline"} 
+                size={64} 
+                color={colors.neutral[300]} 
+              />
+              <Text style={styles.emptyText}>
+                {isConnected ? 'No reminders yet' : 'Not connected'}
+              </Text>
             <Text style={styles.emptySubtext}>
               {isConnected 
                 ? `Create a reminder for ${partnerDisplayName}`
@@ -173,6 +210,7 @@ export default function ChildRemindersScreen() {
           </View>
         }
       />
+      )}
     </SafeAreaView>
   );
 }

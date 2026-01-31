@@ -1,8 +1,8 @@
 // app/(child)/index.tsx
 // Child Home Screen
 
-import React, { useEffect } from 'react';
-import { View, ScrollView, StyleSheet, TouchableOpacity, Text, Dimensions, Platform, Linking } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, ScrollView, StyleSheet, TouchableOpacity, Text, Dimensions, Platform, Linking, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -12,9 +12,10 @@ import {
   NoteCard,
   StatusCard,
 } from '../../src/components/home';
-import { Card, Avatar, Button } from '../../src/components/common';
+import { Card, Avatar, Button, LoadingList } from '../../src/components/common';
 import { useUserStore, useEmergencyStore, useAuthStore } from '../../src/stores';
 import { colors, spacing, layout, typography } from '../../src/constants';
+import { FEATURES } from '../../src/config/features';
 
 // Conditionally import MapView only on native platforms
 let MapView: any = null;
@@ -28,9 +29,11 @@ if (Platform.OS !== 'web') {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function ChildHomeScreen() {
-  const { profile, partner, partnerNote, initialize: initUser } = useUserStore();
+  const { profile, partner, partnerNote, initialize: initUser, isLoading: userLoading } = useUserStore();
   const { user } = useAuthStore();
   const { activeAlerts, initialize: initEmergency } = useEmergencyStore();
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Get the name to display for partner (use partnerCallName if set, otherwise partner's nickname or name)
   const partnerDisplayName = user?.partnerCallName || partner?.name || 'Parent';
@@ -59,6 +62,27 @@ export default function ChildHomeScreen() {
       });
     }
   }, [activeAlerts]);
+
+  // Track initial loading completion
+  useEffect(() => {
+    if (profile && !userLoading && isInitialLoad) {
+      setIsInitialLoad(false);
+    }
+  }, [profile, userLoading]);
+
+  // Pull to refresh handler
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      if (user) {
+        initUser(user.id);
+      }
+    } catch (error) {
+      console.error('Failed to refresh:', error);
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
+  }, [user]);
 
   const openSettings = () => {
     router.push('/modals/settings');
@@ -160,7 +184,21 @@ export default function ChildHomeScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary[500]}
+            colors={[colors.primary[500]]}
+          />
+        }
       >
+        {/* Show loading skeleton on initial load */}
+        {isInitialLoad ? (
+          <LoadingList count={4} type="home" />
+        ) : (
+          <>
+        {/* Original content */}
         {/* Header with Avatar and Settings */}
         <View style={styles.header}>
           <Avatar
@@ -180,15 +218,15 @@ export default function ChildHomeScreen() {
           partnerName={partnerDisplayName}
         />
 
-        {/* Parent Status Card */}
-        {isConnected ? (
+        {/* Parent Status Card - Only show if features enabled */}
+        {isConnected && (FEATURES.BATTERY_MONITORING || FEATURES.LOCATION_TRACKING) ? (
           <StatusCard
             partnerName={partnerDisplayName}
-            batteryLevel={partner?.batteryPercentage || null}
+            batteryLevel={FEATURES.BATTERY_MONITORING ? (partner?.batteryPercentage || null) : null}
             isParent={false}
-            partnerLocation={partner?.lastLocation || null}
+            partnerLocation={FEATURES.LOCATION_TRACKING ? (partner?.lastLocation || null) : null}
           />
-        ) : (
+        ) : !isConnected ? (
           <Card style={styles.connectCard}>
             <Ionicons name="link-outline" size={32} color={colors.text.tertiary} />
             <Text style={styles.connectText}>Connect with your parent to see their status</Text>
@@ -199,7 +237,7 @@ export default function ChildHomeScreen() {
               size="sm"
             />
           </Card>
-        )}
+        ) : null}
 
         {/* Rhythm Cards - Shows what each person is currently doing */}
         {isConnected && partner && (
@@ -241,6 +279,8 @@ export default function ChildHomeScreen() {
 
         {/* Location Map */}
         {isConnected && renderLocationCard()}
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

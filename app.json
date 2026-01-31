@@ -2,7 +2,7 @@
   "expo": {
     "name": "ElderCare",
     "slug": "eldercare",
-    "version": "1.0.0",
+    "version": "3.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -16,6 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ourcompany.eldercare",
+      "buildNumber": "18",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "ElderCare needs your location to share with your family member during emergencies.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "ElderCare needs background location access to keep your family updated about your whereabouts.",

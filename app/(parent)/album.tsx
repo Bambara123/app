@@ -20,18 +20,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { VaultCard } from '../../src/components/album';
+import { LoadingList } from '../../src/components/common';
 import { useAlbumStore, useUserStore, useAuthStore } from '../../src/stores';
 import { colors, spacing, typography, layout, radius } from '../../src/constants';
 
 export default function ParentAlbumScreen() {
   const { profile, partner, connection } = useUserStore();
   const { user } = useAuthStore();
-  const { images, initialize, uploadImage, isUploading, setSelectedImage } = useAlbumStore();
+  const { images, initialize, uploadImage, isUploading, isLoading, setSelectedImage } = useAlbumStore();
   
   // Note modal state
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [pendingImage, setPendingImage] = useState<{uri: string, width: number, height: number} | null>(null);
   const [imageNote, setImageNote] = useState('');
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Generate a fallback connection ID based on user IDs if no connection exists
   const getConnectionId = () => {
@@ -52,6 +54,13 @@ export default function ParentAlbumScreen() {
       return unsubscribe;
     }
   }, [connection?.id, profile?.id, partner?.id]);
+
+  // Track initial loading completion
+  useEffect(() => {
+    if (!isLoading && isInitialLoad) {
+      setIsInitialLoad(false);
+    }
+  }, [isLoading]);
 
   const handleAddPhoto = async () => {
     try {
@@ -165,39 +174,43 @@ export default function ParentAlbumScreen() {
       </View>
 
       {/* Photos */}
-      <FlatList
-        data={images}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => {
-          const uploader = getUploaderInfo(item.uploadedBy);
-          return (
-            <VaultCard
-              image={item}
-              uploaderName={uploader.name}
-              uploaderRole={uploader.role}
-              onPress={() => setSelectedImage(item)}
-            />
-          );
-        }}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="images-outline" size={64} color={colors.neutral[300]} />
-            <Text style={styles.emptyText}>No photos yet</Text>
-            <Text style={styles.emptySubtext}>
-              Tap the + button to add your first memory
-            </Text>
-            <TouchableOpacity
-              onPress={handleAddPhoto}
-              style={styles.emptyAddButton}
-            >
-              <Ionicons name="add" size={20} color={colors.neutral.white} />
-              <Text style={styles.emptyAddButtonText}>Add Photo</Text>
-            </TouchableOpacity>
-          </View>
-        }
-      />
+      {isInitialLoad ? (
+        <LoadingList count={6} type="album" />
+      ) : (
+        <FlatList
+          data={images}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => {
+            const uploader = getUploaderInfo(item.uploadedBy);
+            return (
+              <VaultCard
+                image={item}
+                uploaderName={uploader.name}
+                uploaderRole={uploader.role}
+                onPress={() => setSelectedImage(item)}
+              />
+            );
+          }}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="images-outline" size={64} color={colors.neutral[300]} />
+              <Text style={styles.emptyText}>No photos yet</Text>
+              <Text style={styles.emptySubtext}>
+                Tap the + button to add your first memory
+              </Text>
+              <TouchableOpacity
+                onPress={handleAddPhoto}
+                style={styles.emptyAddButton}
+              >
+                <Ionicons name="add" size={20} color={colors.neutral.white} />
+                <Text style={styles.emptyAddButtonText}>Add Photo</Text>
+              </TouchableOpacity>
+            </View>
+          }
+        />
+      )}
 
       {/* Note Modal */}
       <Modal

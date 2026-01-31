@@ -1,8 +1,11 @@
 // src/services/notifications.ts
-// Expo Notifications service
+// Cloud-only notification system
+// Push notifications are sent from Firebase Cloud Functions
+// This service handles receiving push notifications and navigation
 
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { router } from 'expo-router';
 import { NotificationData } from '../types';
@@ -18,7 +21,51 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// ============================================
+// ANDROID-SPECIFIC CODE (iOS-only app)
+// Note: This code is included for Android compatibility but will not be used
+// as the app is only published to the Apple App Store.
+// ============================================
+
+// Configure Android notification channels (required for push notifications)
+const configureAndroidChannels = async (): Promise<void> => {
+  if (Platform.OS === 'android') {
+    try {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'Default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#E85A6B',
+      });
+
+      await Notifications.setNotificationChannelAsync('reminders', {
+        name: 'Reminders',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: 'reminder.aac',
+        vibrationPattern: [0, 500, 500, 500],
+        enableVibrate: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: true,
+      });
+
+      await Notifications.setNotificationChannelAsync('emergency', {
+        name: 'Emergency',
+        importance: Notifications.AndroidImportance.MAX,
+        sound: 'reminder.aac',
+        vibrationPattern: [0, 1000, 500, 1000],
+        lightColor: '#EF5350',
+        enableVibrate: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: true,
+      });
+    } catch (error) {
+      console.log('Failed to configure Android notification channels:', error);
+    }
+  }
+};
+
 // Request permissions and get push token
+// This is the ONLY notification setup needed - Cloud Functions send all notifications
 export const registerForPushNotifications = async (): Promise<string | null> => {
   try {
     if (!Device.isDevice) {
@@ -38,172 +85,57 @@ export const registerForPushNotifications = async (): Promise<string | null> => 
 
     if (finalStatus !== 'granted') {
       console.log('Failed to get push notification permissions');
+      await configureAndroidChannels();
       return null;
     }
 
-    // Get Expo push token - requires EAS project ID
-    // Skip in development if not configured
-    const projectId = process.env.EXPO_PUBLIC_EXPO_PROJECT_ID;
+    // Configure Android channels
+    await configureAndroidChannels();
+
+    // Get Expo push token - required for cloud notifications
+    const projectId = 
+      Constants.expoConfig?.extra?.eas?.projectId || 
+      Constants.easConfig?.projectId ||
+      process.env.EXPO_PUBLIC_EXPO_PROJECT_ID;
+    
     if (!projectId) {
-      console.log('Skipping push token registration - no Expo project ID configured');
-      console.log('Push notifications will work with local notifications only');
+      console.log('No Expo project ID - push notifications will not work');
       return null;
     }
 
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId,
-    });
-
-    // Configure Android channel
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'Default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#E85A6B',
+    try {
+      const tokenData = await Notifications.getExpoPushTokenAsync({
+        projectId,
       });
-
-      await Notifications.setNotificationChannelAsync('reminders', {
-        name: 'Reminders',
-        importance: Notifications.AndroidImportance.HIGH,
-        sound: 'reminder.aac', // Custom alarm sound
-        vibrationPattern: [0, 500, 500, 500],
-        enableVibrate: true,
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        bypassDnd: true, // Bypass Do Not Disturb for alarms
-      });
-
-      await Notifications.setNotificationChannelAsync('emergency', {
-        name: 'Emergency',
-        importance: Notifications.AndroidImportance.MAX,
-        sound: 'reminder.aac', // Use same alarm sound for emergencies
-        vibrationPattern: [0, 1000, 500, 1000],
-        lightColor: '#EF5350',
-        enableVibrate: true,
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        bypassDnd: true, // Always break through DND for emergencies
-      });
+      console.log('Push token registered:', tokenData.data);
+      return tokenData.data;
+    } catch (error) {
+      console.log('Push token registration failed:', error);
+      return null;
     }
-
-    return tokenData.data;
   } catch (error) {
     console.log('Push notification registration failed:', error);
-    console.log('App will continue without push notifications');
     return null;
   }
 };
 
-// Auto-miss timeout duration (1 minute)
-export const REMINDER_TIMEOUT_MS = 60 * 1000;
-
-// Schedule local notification for reminder with custom alarm sound
-export const scheduleReminderNotification = async (
-  reminderId: string,
-  title: string,
-  body: string,
-  triggerDate: Date
-): Promise<string> => {
-  // Check if the trigger date is in the past
-  const now = new Date();
-  if (triggerDate <= now) {
-    // If in the past, schedule for 1 second from now
-    triggerDate = new Date(now.getTime() + 1000);
-  }
-
-  const identifier = await Notifications.scheduleNotificationAsync({
-    content: {
-      title,
-      body,
-      data: { type: 'reminder', reminderId } as Record<string, unknown>,
-      // Use custom alarm sound (max 30 seconds on iOS)
-      // Falls back to default if file not found
-      sound: 'reminder.aac',
-      priority: Notifications.AndroidNotificationPriority.HIGH,
-      // iOS 15+ time sensitive - breaks through Focus/DND
-      ...(Platform.OS === 'ios' && {
-        interruptionLevel: 'timeSensitive' as const,
-      }),
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: triggerDate,
-      channelId: Platform.OS === 'android' ? 'reminders' : undefined,
-    },
-  });
-
-  return identifier;
-};
-
-// Schedule auto-miss notification (fires 1 minute after reminder to mark as missed)
-export const scheduleAutoMissNotification = async (
-  reminderId: string,
-  triggerDate: Date
-): Promise<string> => {
-  const missTime = new Date(triggerDate.getTime() + REMINDER_TIMEOUT_MS);
-
-  const identifier = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'Reminder Missed',
-      body: 'A reminder was not responded to.',
-      data: { type: 'reminder_auto_miss', reminderId } as Record<string, unknown>,
-      sound: false, // Silent notification
-      priority: Notifications.AndroidNotificationPriority.DEFAULT,
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: missTime,
-      channelId: Platform.OS === 'android' ? 'default' : undefined,
-    },
-  });
-
-  return identifier;
-};
-
-// Cancel scheduled notification
-export const cancelNotification = async (
-  notificationId: string
-): Promise<void> => {
-  await Notifications.cancelScheduledNotificationAsync(notificationId);
-};
-
-// Cancel all scheduled notifications
-export const cancelAllNotifications = async (): Promise<void> => {
-  await Notifications.cancelAllScheduledNotificationsAsync();
-};
-
 // Setup notification response listener
-export const setupNotificationListeners = (
-  onReminderTriggered?: (reminderId: string) => Promise<void>,
-  onReminderAutoMiss?: (reminderId: string) => Promise<void>
-): () => void => {
+// Handles navigation when push notifications arrive or are tapped
+export const setupNotificationListeners = (): () => void => {
   // Handle notification received while app is foregrounded
-  // For reminders, automatically open the alarm modal
   const receivedSubscription = Notifications.addNotificationReceivedListener(
     async (notification) => {
-      console.log('Notification received:', notification);
+      console.log('Push notification received:', notification);
       const data = notification.request.content.data as unknown as NotificationData;
 
-      // Handle reminder notification - open alarm screen and mark trigger time
+      // Handle reminder notification - open alarm screen
       if (data?.type === 'reminder' && data.reminderId) {
-        // Mark alarm as triggered (for timeout tracking)
-        if (onReminderTriggered) {
-          await onReminderTriggered(data.reminderId);
-        }
-
-        // Small delay to ensure app is ready
         setTimeout(() => {
           router.push({
             pathname: '/modals/reminder-alarm',
             params: { reminderId: data.reminderId },
           });
         }, 500);
-      }
-
-      // Handle auto-miss notification (fires 1 minute after reminder)
-      if (data?.type === 'reminder_auto_miss' && data.reminderId) {
-        if (onReminderAutoMiss) {
-          await onReminderAutoMiss(data.reminderId);
-        }
       }
 
       // Auto-open emergency alert
@@ -222,12 +154,6 @@ export const setupNotificationListeners = (
   const responseSubscription =
     Notifications.addNotificationResponseReceivedListener(async (response) => {
       const data = response.notification.request.content.data as unknown as NotificationData;
-
-      // For reminder notifications tapped from background, mark trigger time
-      if (data?.type === 'reminder' && data.reminderId && onReminderTriggered) {
-        await onReminderTriggered(data.reminderId);
-      }
-
       handleNotificationTap(data);
     });
 
@@ -267,24 +193,20 @@ const handleNotificationTap = (data: NotificationData): void => {
   }
 };
 
-// Send local notification immediately (for alerts to caregiver)
+// Send local notification immediately (for informational alerts only)
+// Used for: task completed, escalation received, etc.
 export const sendLocalNotification = async (
   title: string,
   body: string,
   data?: NotificationData
 ): Promise<void> => {
-  // Determine if this is a reminder-related notification that needs alarm sound
-  const isReminderAlert = data?.type?.includes('reminder');
-
   await Notifications.scheduleNotificationAsync({
     content: {
       title,
       body,
       data: data as Record<string, unknown> | undefined,
-      // Use alarm sound for reminder alerts, default for others
-      sound: isReminderAlert ? 'reminder.aac' : true,
+      sound: true, // Default sound for informational notifications
       priority: Notifications.AndroidNotificationPriority.HIGH,
-      // iOS 15+ time sensitive for urgent notifications
       ...(Platform.OS === 'ios' && {
         interruptionLevel: 'timeSensitive' as const,
       }),

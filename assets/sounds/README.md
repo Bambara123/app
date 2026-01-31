@@ -4,18 +4,19 @@ This folder contains custom notification sounds for the app.
 
 ## Required Files
 
-### `reminder.wav`
+### `reminder.aac`
 - **Purpose**: Plays when a reminder notification is triggered
 - **Duration**: Maximum 30 seconds (iOS limitation)
-- **Format**: `.wav`, `.caf`, or `.aiff` for iOS; `.wav` or `.mp3` for Android
+- **Format**: `.aac`, `.wav`, `.caf`, or `.aiff` for iOS; `.aac`, `.wav` or `.mp3` for Android
 - **Recommendation**: Use a loud, attention-grabbing alarm sound
 
 ## How to Add Your Sound
 
 1. Download or create an alarm sound file (max 30 seconds)
-2. Rename it to `reminder.wav`
-3. Place it in this folder (`assets/sounds/`)
-4. Rebuild the app with `eas build`
+2. Convert it to `.aac` format (recommended) or use `.wav`
+3. Rename it to `reminder.aac`
+4. Place it in this folder (`assets/sounds/`)
+5. Rebuild the app with `eas build`
 
 ## Free Alarm Sound Resources
 

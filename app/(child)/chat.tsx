@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { ChatHeader, ChatBubble, MessageInput } from '../../src/components/chat';
+import { LoadingList } from '../../src/components/common';
 import { useChatStore, useUserStore, useAuthStore } from '../../src/stores';
 import { colors, spacing, typography, radius } from '../../src/constants';
 import { Message } from '../../src/types';
@@ -24,10 +25,12 @@ export default function ChildChatScreen() {
     isSending,
     isLoadingMore,
     hasMoreMessages,
+    isLoading,
   } = useChatStore();
   const flatListRef = useRef<FlatList>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isAtTop, setIsAtTop] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   const isConnected = !!user?.connectedTo;
   const partnerDisplayName = user?.partnerCallName || partner?.name || 'Parent';
@@ -54,6 +57,13 @@ export default function ChildChatScreen() {
       }, 50);
     }
   }, [messages]);
+
+  // Track initial loading completion
+  useEffect(() => {
+    if (!isLoading && isInitialLoad && messages.length >= 0) {
+      setIsInitialLoad(false);
+    }
+  }, [isLoading, messages.length]);
 
   const handleNavigateToConnect = () => {
     router.push('/(auth)/partner-connection');
@@ -200,36 +210,40 @@ export default function ChildChatScreen() {
         ) : null}
 
         {/* Messages */}
-        <FlatList
-          ref={flatListRef}
-          data={isConnected ? messages : []}
-          keyExtractor={(item) => item.id}
-          renderItem={renderMessage}
-          contentContainerStyle={styles.messageList}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          onScroll={handleScroll}
-          scrollEventThrottle={400}
-          onContentSizeChange={() => {
-            flatListRef.current?.scrollToEnd({ animated: true });
-          }}
-          ListHeaderComponent={renderLoadMoreButton}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons 
-                name={isConnected ? "chatbubbles-outline" : "link-outline"} 
-                size={48} 
-                color={colors.text.tertiary} 
-              />
-              <Text style={styles.emptyText}>
-                {isConnected 
-                  ? `Start a conversation with ${partnerDisplayName}`
-                  : 'Connect with your parent to unlock chat'
-                }
-              </Text>
-            </View>
-          }
-        />
+        {isInitialLoad && isConnected ? (
+          <LoadingList type="chat" />
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={isConnected ? messages : []}
+            keyExtractor={(item) => item.id}
+            renderItem={renderMessage}
+            contentContainerStyle={styles.messageList}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            onScroll={handleScroll}
+            scrollEventThrottle={400}
+            onContentSizeChange={() => {
+              flatListRef.current?.scrollToEnd({ animated: true });
+            }}
+            ListHeaderComponent={renderLoadMoreButton}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Ionicons 
+                  name={isConnected ? "chatbubbles-outline" : "link-outline"} 
+                  size={48} 
+                  color={colors.text.tertiary} 
+                />
+                <Text style={styles.emptyText}>
+                  {isConnected 
+                    ? `Start a conversation with ${partnerDisplayName}`
+                    : 'Connect with your parent to unlock chat'
+                  }
+                </Text>
+              </View>
+            }
+          />
+        )}
 
         {/* Message Input */}
         <MessageInput

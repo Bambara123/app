@@ -1,10 +1,12 @@
 // src/components/reminders/ReminderCard.tsx
 // Reminder card with actions
 
-import React from 'react';
+import React, { useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { format, isToday, isTomorrow } from 'date-fns';
+import * as Haptics from 'expo-haptics';
+import ConfettiCannon from 'react-native-confetti-cannon';
 import { Card, Badge } from '../common';
 import { colors, spacing, typography, radius, reminderIcons } from '../../constants';
 import { Reminder, ReminderLabel } from '../../types';
@@ -14,6 +16,7 @@ interface ReminderCardProps {
   isParent?: boolean;
   onPress?: () => void;
   onDone?: () => void;
+  onDelete?: () => void;
 }
 
 const labelColors: Record<ReminderLabel, { bg: string; accent: string }> = {
@@ -29,8 +32,21 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
   isParent = false,
   onPress,
   onDone,
+  onDelete,
 }) => {
+  const confettiRef = useRef<any>(null);
   const labelStyle = labelColors[reminder.label] || labelColors.other;
+
+  const handleDone = () => {
+    // Trigger haptic feedback
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    // Trigger confetti
+    confettiRef.current?.start();
+    // Call the actual done handler
+    if (onDone) {
+      setTimeout(() => onDone(), 300);
+    }
+  };
 
   const formatDate = (date: Date) => {
     if (isToday(date)) return 'Today';
@@ -110,18 +126,50 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
           </View>
         </View>
 
-        {/* Actions for parent - only Mark as Done button */}
-        {isParent && reminder.status === 'pending' && onDone && (
+        {/* Actions */}
+        {((isParent && (reminder.status === 'pending' || reminder.status === 'missed') && onDone) ||
+          (!isParent && onDelete && reminder.status !== 'done')) && (
           <View style={styles.actions}>
-            <TouchableOpacity
-              onPress={onDone}
-              style={[styles.actionButton, styles.doneButton]}
-            >
-              <Ionicons name="checkmark-circle" size={18} color={colors.neutral.white} />
-              <Text style={styles.actionText}>Mark as Done</Text>
-            </TouchableOpacity>
+            {/* Mark as Done button for parent (pending or missed) */}
+            {isParent && (reminder.status === 'pending' || reminder.status === 'missed') && onDone && (
+              <TouchableOpacity
+                onPress={handleDone}
+                style={[styles.actionButton, styles.doneButton]}
+              >
+                <Ionicons name="checkmark-circle" size={18} color={colors.neutral.white} />
+                <Text style={styles.actionText}>Mark as Done</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Delete button for child (not done reminders) */}
+            {!isParent && onDelete && reminder.status !== 'done' && (
+              <TouchableOpacity
+                onPress={onDelete}
+                style={[styles.actionButton, styles.deleteButton]}
+              >
+                <Ionicons name="trash-outline" size={18} color={colors.neutral.white} />
+                <Text style={styles.actionText}>Delete</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
+
+        {/* Confetti animation */}
+        <ConfettiCannon
+          ref={confettiRef}
+          count={50}
+          origin={{ x: -10, y: 0 }}
+          autoStart={false}
+          fadeOut
+          fallSpeed={2000}
+          colors={[
+            colors.success.main,
+            colors.primary[500],
+            colors.accent.main,
+            '#FFD700',
+            '#FF69B4',
+          ]}
+        />
       </Card>
     </TouchableOpacity>
   );
@@ -199,6 +247,9 @@ const styles = StyleSheet.create({
   },
   doneButton: {
     backgroundColor: colors.success.main,
+  },
+  deleteButton: {
+    backgroundColor: colors.danger.main,
   },
   actionText: {
     fontSize: typography.fontSize.sm,

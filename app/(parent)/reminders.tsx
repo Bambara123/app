@@ -1,12 +1,13 @@
 // app/(parent)/reminders.tsx
 // Parent Reminders Screen (view-only with filters)
 
-import React, { useEffect } from 'react';
-import { View, FlatList, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, FlatList, StyleSheet, Text, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { ReminderCard, ReminderFilters } from '../../src/components/reminders';
+import { LoadingList } from '../../src/components/common';
 import { useReminderStore, useUserStore, useAuthStore } from '../../src/stores';
 import { colors, spacing, typography, radius } from '../../src/constants';
 
@@ -19,8 +20,11 @@ export default function ParentRemindersScreen() {
     setFilters,
     initialize,
     markAsDone,
+    isLoading,
   } = useReminderStore();
 
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const isConnected = !!user?.connectedTo;
   const partnerDisplayName = user?.partnerCallName || partner?.name || 'Caregiver';
 
@@ -28,6 +32,28 @@ export default function ParentRemindersScreen() {
     if (profile?.id && isConnected) {
       const unsubscribe = initialize(profile.id, true);
       return unsubscribe;
+    }
+  }, [profile?.id, isConnected]);
+
+  // Track initial loading completion
+  useEffect(() => {
+    if (!isLoading && isInitialLoad) {
+      setIsInitialLoad(false);
+    }
+  }, [isLoading]);
+
+  // Pull to refresh handler
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      if (profile?.id && isConnected) {
+        // Re-initialize to refresh data
+        initialize(profile.id, true);
+      }
+    } catch (error) {
+      console.error('Failed to refresh:', error);
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500);
     }
   }, [profile?.id, isConnected]);
 
@@ -74,28 +100,39 @@ export default function ParentRemindersScreen() {
       </View>
 
       {/* Reminders List */}
-      <FlatList
-        data={isConnected ? filteredReminders : []}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <ReminderCard
-            reminder={item}
-            isParent
-            onDone={() => handleDone(item.id)}
-          />
-        )}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons 
-              name={isConnected ? "alarm-outline" : "link-outline"} 
-              size={64} 
-              color={colors.neutral[300]} 
+      {isInitialLoad && isConnected ? (
+        <LoadingList count={5} type="reminder" />
+      ) : (
+        <FlatList
+          data={isConnected ? filteredReminders : []}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary[500]}
+              colors={[colors.primary[500]]}
             />
-            <Text style={styles.emptyText}>
-              {isConnected ? 'No reminders found' : 'Not connected'}
-            </Text>
+          }
+          renderItem={({ item }) => (
+            <ReminderCard
+              reminder={item}
+              isParent
+              onDone={() => handleDone(item.id)}
+            />
+          )}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons 
+                name={isConnected ? "alarm-outline" : "link-outline"} 
+                size={64} 
+                color={colors.neutral[300]} 
+              />
+              <Text style={styles.emptyText}>
+                {isConnected ? 'No reminders found' : 'Not connected'}
+              </Text>
             <Text style={styles.emptySubtext}>
               {isConnected 
                 ? `Your ${partnerDisplayName} will create reminders for you`
@@ -114,6 +151,7 @@ export default function ParentRemindersScreen() {
           </View>
         }
       />
+      )}
     </SafeAreaView>
   );
 }

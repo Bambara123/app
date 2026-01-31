@@ -103,6 +103,7 @@ export const userService = {
       mood: null,
       lastLocation: null,
       expoPushToken: null,
+      missedReminders: 0,
       lastInteraction: new Date(),
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -219,11 +220,27 @@ export const userService = {
           }
         : null,
       expoPushToken: data.expoPushToken || null,
+      missedReminders: data.missedReminders || 0,
       lastInteraction: timestampToDate(data.lastInteraction),
       createdAt: timestampToDate(data.createdAt),
       updatedAt: timestampToDate(data.updatedAt),
       partnerCallName: data.partnerCallName || null,
     };
+  },
+
+  // Reset missed reminders counter to 0
+  async resetMissedReminders(userId: string): Promise<void> {
+    await this.updateUser(userId, { missedReminders: 0 } as Partial<User>);
+  },
+
+  // Increment missed reminders counter by 1
+  async incrementMissedReminders(userId: string): Promise<void> {
+    const user = await this.getUser(userId);
+    if (user) {
+      await this.updateUser(userId, { 
+        missedReminders: (user.missedReminders || 0) + 1 
+      } as Partial<User>);
+    }
   },
 
   async deleteUser(userId: string): Promise<void> {
@@ -441,8 +458,7 @@ export const reminderService = {
       customAlarmAudioUrl: null,
       followUpMinutes: input.followUpMinutes || 10,
       notificationId: null,
-      alarmTriggeredAt: null,
-      missNotificationId: null,
+      ringCount: 1, // Start at first ring
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -480,6 +496,15 @@ export const reminderService = {
   async deleteReminder(reminderId: string): Promise<void> {
     const reminderRef = doc(db, 'reminders', reminderId);
     await deleteDoc(reminderRef);
+  },
+
+  async getReminder(reminderId: string): Promise<Reminder | null> {
+    const reminderRef = doc(db, 'reminders', reminderId);
+    const snap = await getDoc(reminderRef);
+    
+    if (!snap.exists()) return null;
+    
+    return this.convertReminder(snap.data(), snap.id);
   },
 
   async markAsDone(reminderId: string): Promise<void> {
@@ -559,10 +584,8 @@ export const reminderService = {
       customAlarmAudioUrl: data.customAlarmAudioUrl || null,
       followUpMinutes: data.followUpMinutes || 10,
       notificationId: data.notificationId || null,
-      alarmTriggeredAt: data.alarmTriggeredAt
-        ? timestampToDate(data.alarmTriggeredAt)
-        : null,
-      missNotificationId: data.missNotificationId || null,
+      ringCount: data.ringCount || 1,
+      serverNotificationSent: data.serverNotificationSent || false,
       createdAt: timestampToDate(data.createdAt),
       updatedAt: timestampToDate(data.updatedAt),
     };

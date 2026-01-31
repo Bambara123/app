@@ -54,6 +54,17 @@ export const StatusCard: React.FC<StatusCardProps> = ({
     }
   };
 
+  // Check if we have any content to show
+  const hasBattery = batteryLevel !== null;
+  const hasEmergency = isParent && onEmergency;
+  const hasLocation = !isParent && partnerLocation !== undefined;
+  const hasContent = hasBattery || hasEmergency || hasLocation;
+
+  // Don't render if no content
+  if (!hasContent) {
+    return null;
+  }
+
   return (
     <Card variant="elevated" style={styles.container}>
       <Text style={styles.label}>
@@ -61,23 +72,25 @@ export const StatusCard: React.FC<StatusCardProps> = ({
       </Text>
 
       <View style={styles.statusRow}>
-        {/* Battery */}
-        <BatteryCard
-          level={batteryLevel}
-          label={isParent ? 'My Battery' : `${partnerName}'s Battery`}
-        />
+        {/* Battery - only show if level is provided */}
+        {hasBattery && (
+          <BatteryCard
+            level={batteryLevel}
+            label={isParent ? 'My Battery' : `${partnerName}'s Battery`}
+          />
+        )}
 
         {/* Emergency button for parent view */}
-        {isParent ? (
-          onEmergency && (
-            <EmergencyButton
-              onPress={onEmergency}
-              isLoading={isEmergencyLoading}
-              compact
-            />
-          )
-        ) : (
-          /* Map button - for child view, takes full remaining space */
+        {hasEmergency && (
+          <EmergencyButton
+            onPress={onEmergency!}
+            isLoading={isEmergencyLoading}
+            compact
+          />
+        )}
+
+        {/* Map button - for child view, only show if location feature enabled */}
+        {hasLocation && (
           <TouchableOpacity style={styles.mapButton} onPress={handleOpenMaps}>
             <Ionicons
               name="location"

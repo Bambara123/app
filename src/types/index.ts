@@ -55,6 +55,9 @@ export interface User {
   // Push Notifications
   expoPushToken: string | null;
   
+  // Missed Reminders Counter (for parent users)
+  missedReminders: number;
+  
   // Metadata
   lastInteraction: Date;
   createdAt: Date;
@@ -109,7 +112,7 @@ export type ReminderRepeat = 'none' | 'daily' | 'weekly' | 'custom';
 
 export type ReminderLabel = 'medicine' | 'meal' | 'doctor' | 'exercise' | 'other';
 
-export type ReminderStatus = 'pending' | 'done' | 'missed' | 'snoozed';
+export type ReminderStatus = 'pending' | 'done' | 'missed' | 'snoozed' | 'in_progress';
 
 export interface CustomRepeat {
   days: number[];  // 0-6 (Sunday-Saturday)
@@ -135,10 +138,10 @@ export interface Reminder {
   customAlarmAudioUrl: string | null;
   followUpMinutes: number;
   notificationId: string | null;
-  // Track when alarm was triggered for timeout handling
-  alarmTriggeredAt: Date | null;
-  // Scheduled notification ID for auto-miss
-  missNotificationId: string | null;
+  // Track which ring this is (1 = first ring, 2 = second/final ring)
+  ringCount: number;
+  // Flag to prevent duplicate server push notifications
+  serverNotificationSent?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -265,8 +268,7 @@ export type NotificationType =
   | 'reminder_snoozed'
   | 'reminder_missed'
   | 'reminder_missed_urgent'
-  | 'reminder_escalation'
-  | 'reminder_auto_miss';
+  | 'reminder_escalation';
 
 export interface NotificationData {
   type: NotificationType;

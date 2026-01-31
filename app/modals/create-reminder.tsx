@@ -11,6 +11,7 @@ import {
   Platform,
   Alert,
   KeyboardAvoidingView,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -77,6 +78,7 @@ export default function CreateReminderModal() {
   };
 
   const handleDateChange = (event: any, selected?: Date) => {
+    // Android-specific: Close pickers on selection (not used - iOS-only app)
     if (Platform.OS === 'android') {
       setShowDatePicker(false);
       setShowTimePicker(false);
@@ -89,7 +91,7 @@ export default function CreateReminderModal() {
         newDate.setDate(selected.getDate());
         setDateTime(newDate);
         
-        // On Android, show time picker after date selection
+        // Android-specific: Show time picker after date selection (not used - iOS-only app)
         if (Platform.OS === 'android') {
           setTimeout(() => {
             setPickerMode('time');
@@ -106,13 +108,21 @@ export default function CreateReminderModal() {
   };
 
   const openDatePicker = () => {
-    setPickerMode('date');
-    setShowDatePicker(true);
+    // Dismiss keyboard first to prevent blocking the picker
+    Keyboard.dismiss();
+    setTimeout(() => {
+      setPickerMode('date');
+      setShowDatePicker(true);
+    }, 100);
   };
 
   const openTimePicker = () => {
-    setPickerMode('time');
-    setShowTimePicker(true);
+    // Dismiss keyboard first to prevent blocking the picker
+    Keyboard.dismiss();
+    setTimeout(() => {
+      setPickerMode('time');
+      setShowTimePicker(true);
+    }, 100);
   };
 
   const formatDate = (date: Date) => {
@@ -451,7 +461,7 @@ const styles = StyleSheet.create({
   descriptionInput: {
     height: 80,
     textAlignVertical: 'top',
-    paddingTop: spacing[3],
+    paddingTop: spacing[4], // Increased padding to prevent text from being too close to top
   },
   dateTimeRow: {
     flexDirection: 'row',

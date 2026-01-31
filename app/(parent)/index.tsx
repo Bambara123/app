@@ -1,8 +1,8 @@
 // app/(parent)/index.tsx
 // Parent Home Screen
 
-import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { View, ScrollView, StyleSheet, TouchableOpacity, Text, Alert } from 'react-native';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { View, ScrollView, StyleSheet, TouchableOpacity, Text, Alert, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
@@ -12,19 +12,21 @@ import {
   NoteCard,
   StatusCard,
 } from '../../src/components/home';
-import { ReminderCard } from '../../src/components/reminders';
-import { Card, Avatar, Button } from '../../src/components/common';
+import { Card, Avatar, Button, LoadingList } from '../../src/components/common';
 import { useUserStore, useReminderStore, useEmergencyStore, useAuthStore } from '../../src/stores';
 import { colors, spacing, layout, typography } from '../../src/constants';
 import { startBatteryMonitoring } from '../../src/services/battery';
 import { startLocationMonitoring } from '../../src/services/location';
+import { FEATURES } from '../../src/config/features';
 
 export default function ParentHomeScreen() {
-  const { profile, partner, partnerNote, initialize: initUser } = useUserStore();
+  const { profile, partner, partnerNote, initialize: initUser, isLoading: userLoading } = useUserStore();
   const { user } = useAuthStore();
-  const { reminders, initialize: initReminders } = useReminderStore();
+  const { initialize: initReminders } = useReminderStore();
   const { triggerEmergency, isTriggering, error: emergencyError } = useEmergencyStore();
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Get the name to display for partner (use partnerCallName if set, otherwise partner's nickname or name)
   const partnerDisplayName = user?.partnerCallName || partner?.name || 'Family';
@@ -37,6 +39,28 @@ export default function ParentHomeScreen() {
   useEffect(() => {
     if (user?.id && !profile) {
       initUser(user.id);
+    }
+  }, [user?.id]);
+
+  // Track initial loading completion
+  useEffect(() => {
+    if (profile && !userLoading && isInitialLoad) {
+      setIsInitialLoad(false);
+    }
+  }, [profile, userLoading]);
+
+  // Pull to refresh handler
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      if (user?.id) {
+        initUser(user.id);
+      }
+    } catch (error) {
+      console.error('Failed to refresh:', error);
+    } finally {
+      // Minimum 500ms refresh for better UX
+      setTimeout(() => setIsRefreshing(false), 500);
     }
   }, [user?.id]);
 
@@ -68,22 +92,26 @@ export default function ParentHomeScreen() {
         console.error('Failed to initialize reminders:', error);
       }
 
-      // Start battery monitoring (delayed by 2 seconds to avoid blocking UI)
-      try {
-        const batteryCleanup = startBatteryMonitoring(user.id, (level) => {
-          setBatteryLevel(level);
-        });
-        cleanupFunctions.push(batteryCleanup);
-      } catch (error) {
-        console.error('Failed to start battery monitoring:', error);
+      // Start battery monitoring (if enabled)
+      if (FEATURES.BATTERY_MONITORING) {
+        try {
+          const batteryCleanup = startBatteryMonitoring(user.id, (level) => {
+            setBatteryLevel(level);
+          });
+          cleanupFunctions.push(batteryCleanup);
+        } catch (error) {
+          console.error('Failed to start battery monitoring:', error);
+        }
       }
 
-      // Start location monitoring (delayed by 1 second to avoid blocking UI)
-      try {
-        const locationCleanup = startLocationMonitoring(user.id);
-        cleanupFunctions.push(locationCleanup);
-      } catch (error) {
-        console.error('Failed to start location monitoring:', error);
+      // Start location monitoring (if enabled)
+      if (FEATURES.LOCATION_TRACKING) {
+        try {
+          const locationCleanup = startLocationMonitoring(user.id);
+          cleanupFunctions.push(locationCleanup);
+        } catch (error) {
+          console.error('Failed to start location monitoring:', error);
+        }
       }
 
       // Cleanup when screen loses focus or unmounts
@@ -102,11 +130,6 @@ export default function ParentHomeScreen() {
       };
     }, [profile?.id, user?.id, user?.role, initReminders])
   );
-
-  // Get recent reminder (memoized to avoid recalculation on every render)
-  const recentReminder = useMemo(() => {
-    return reminders.find((r) => r.status === 'pending');
-  }, [reminders]);
 
   const handleEmergency = async () => {
     if (profile?.id && partner?.id) {
@@ -134,17 +157,26 @@ export default function ParentHomeScreen() {
     }
   };
 
-  const handleReminderDone = async (reminderId: string) => {
-    const { markAsDone } = useReminderStore.getState();
-    await markAsDone(reminderId);
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary[500]}
+            colors={[colors.primary[500]]}
+          />
+        }
       >
+        {/* Show loading skeleton on initial load */}
+        {isInitialLoad ? (
+          <LoadingList count={4} type="home" />
+        ) : (
+          <>
+        {/* Original content */}
         {/* Header with Avatar and Settings */}
         <View style={styles.header}>
           <Avatar
@@ -165,14 +197,16 @@ export default function ParentHomeScreen() {
           partnerName={partnerDisplayName}
         />
 
-        {/* Status Card (Battery + Emergency) */}
-        <StatusCard
-          partnerName={partnerDisplayName}
-          batteryLevel={batteryLevel ?? profile?.batteryPercentage ?? null}
-          isParent={true}
-          onEmergency={isConnected ? handleEmergency : undefined}
-          isEmergencyLoading={isTriggering}
-        />
+        {/* Status Card (Battery + Emergency) - Only show if features enabled */}
+        {(FEATURES.BATTERY_MONITORING || FEATURES.EMERGENCY_ALERTS) && (
+          <StatusCard
+            partnerName={partnerDisplayName}
+            batteryLevel={FEATURES.BATTERY_MONITORING ? (batteryLevel ?? profile?.batteryPercentage ?? null) : null}
+            isParent={true}
+            onEmergency={FEATURES.EMERGENCY_ALERTS && isConnected ? handleEmergency : undefined}
+            isEmergencyLoading={isTriggering}
+          />
+        )}
 
         {/* Connect Card if not connected */}
         {!isConnected && (
@@ -225,16 +259,7 @@ export default function ParentHomeScreen() {
             onSaveNote={handleSaveNoteForChild}
           />
         ) : null}
-
-        {/* Recent Reminder */}
-        {recentReminder && (
-          <View style={styles.reminderSection}>
-            <ReminderCard
-              reminder={recentReminder}
-              isParent
-              onDone={() => handleReminderDone(recentReminder.id)}
-            />
-          </View>
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -270,9 +295,6 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     color: colors.text.tertiary,
     textAlign: 'center',
-  },
-  reminderSection: {
-    marginTop: spacing[4],
   },
 });
 

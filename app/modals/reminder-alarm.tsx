@@ -1,49 +1,64 @@
 // app/modals/reminder-alarm.tsx
 // Reminder alarm modal for parent
 
-import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Vibration, Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Vibration, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { format } from 'date-fns';
 import { Audio } from 'expo-av';
 import { Button } from '../../src/components/common';
-import { useReminderStore, useAuthStore, useUserStore } from '../../src/stores';
+import { useReminderStore } from '../../src/stores';
 import { colors, spacing, typography, radius, reminderIcons } from '../../src/constants';
 
-const AUTO_TIMEOUT_MS = 20 * 1000; // 1 minute auto-timeout
+const MAX_WAIT_FOR_REMINDER_MS = 5000; // Wait max 5 seconds for reminder to load
 
 export default function ReminderAlarmScreen() {
   const { reminderId } = useLocalSearchParams<{ reminderId: string }>();
-  const { reminders, markAsDone, snooze, isReminderTimedOut, handleAutoMiss, handleAlarmTriggered } = useReminderStore();
-  const { user } = useAuthStore();
-  const { profile } = useUserStore();
+  const { reminders, markAsDone, snooze, markAsInProgress, dismiss, isReminderActive } = useReminderStore();
   const soundRef = useRef<Audio.Sound | null>(null);
-  const autoTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const hasCheckedTimeout = useRef(false);
+  const [isWaitingForReminder, setIsWaitingForReminder] = useState(false);
+  const waitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const reminder = reminders.find((r) => r.id === reminderId);
-  const parentNickname = profile?.nickname || profile?.name || 'Your parent';
+
+  // Wait for reminder to load from Firestore if not immediately available
+  useEffect(() => {
+    if (!reminder && reminderId && !isWaitingForReminder) {
+      setIsWaitingForReminder(true);
+      
+      // Wait max 5 seconds for reminder to sync
+      waitTimeoutRef.current = setTimeout(() => {
+        setIsWaitingForReminder(false);
+      }, MAX_WAIT_FOR_REMINDER_MS);
+    } else if (reminder && isWaitingForReminder) {
+      // Reminder loaded!
+      setIsWaitingForReminder(false);
+      if (waitTimeoutRef.current) {
+        clearTimeout(waitTimeoutRef.current);
+      }
+    }
+
+    return () => {
+      if (waitTimeoutRef.current) {
+        clearTimeout(waitTimeoutRef.current);
+      }
+    };
+  }, [reminder, reminderId, isWaitingForReminder]);
 
   useEffect(() => {
-    // Check if reminder has already timed out (e.g., user opened app late)
-    if (reminderId && !hasCheckedTimeout.current) {
-      hasCheckedTimeout.current = true;
-      
-      // Check timeout status
-      const timedOut = isReminderTimedOut(reminderId);
+    // Check if reminder is still active (within 2-min window)
+    if (reminderId) {
+      const isActive = isReminderActive(reminderId);
       const alreadyActioned = reminder && reminder.status !== 'pending';
       
-      if (timedOut || alreadyActioned) {
-        // Timeout already passed or reminder already handled, just go back
-        console.log('Reminder timed out or already handled, navigating back');
+      if (!isActive || alreadyActioned) {
+        // Reminder is outside 2-min window or already handled, go back
+        console.log('Reminder not active or already handled, navigating back');
         router.back();
         return;
       }
-      
-      // Mark alarm as triggered (for background timeout tracking)
-      handleAlarmTriggered(reminderId);
     }
 
     // Set up audio mode
@@ -79,14 +94,8 @@ export default function ReminderAlarmScreen() {
     };
     playRingtone();
 
-    // Auto-timeout after 1 minute - mark as missed using the new handler
-    autoTimeoutRef.current = setTimeout(async () => {
-      if (reminderId) {
-        await stopAlarm();
-        await handleAutoMiss(reminderId, user?.connectedTo, parentNickname);
-        router.back();
-      }
-    }, AUTO_TIMEOUT_MS);
+    // Note: Auto-timeout is now handled by cloud function (2-min window)
+    // No need for local timeout - cloud will mark as missed if user doesn't act
 
     return () => {
       Vibration.cancel();
@@ -95,20 +104,11 @@ export default function ReminderAlarmScreen() {
         soundRef.current.stopAsync();
         soundRef.current.unloadAsync();
       }
-      // Clear auto-timeout
-      if (autoTimeoutRef.current) {
-        clearTimeout(autoTimeoutRef.current);
-      }
     };
-  }, [reminder?.customAlarmAudioUrl, reminderId]);
+  }, [reminder?.customAlarmAudioUrl, reminderId, isReminderActive]);
 
   const stopAlarm = async () => {
     Vibration.cancel();
-    // Clear auto-timeout
-    if (autoTimeoutRef.current) {
-      clearTimeout(autoTimeoutRef.current);
-      autoTimeoutRef.current = null;
-    }
     if (soundRef.current) {
       await soundRef.current.stopAsync();
       await soundRef.current.unloadAsync();
@@ -119,35 +119,65 @@ export default function ReminderAlarmScreen() {
   const handleDone = async () => {
     if (reminderId && reminder) {
       await stopAlarm();
-      // Notify the adult child that parent completed the task
-      await markAsDone(reminderId, user?.connectedTo, reminder.title, parentNickname);
+      // Navigate back first to prevent re-render flash
       router.back();
+      // Cloud Function handles task cancellation and child notification
+      markAsDone(reminderId);
     }
   };
 
   const handleSnooze = async () => {
     if (reminderId && reminder) {
       await stopAlarm();
-      // Use followUpMinutes as snooze duration, notify child
-      await snooze(
-        reminderId, 
-        reminder.followUpMinutes || 10, 
-        user?.connectedTo, 
-        reminder.snoozeCount, 
-        reminder.title,
-        reminder.followUpMinutes,
-        parentNickname
-      );
+      // Navigate back first to prevent re-render flash when snooze count updates
       router.back();
+      // Cloud Function handles task rescheduling
+      snooze(reminderId, reminder.followUpMinutes || 10);
     }
   };
+
+  const handleImOnIt = async () => {
+    if (reminderId && reminder) {
+      await stopAlarm();
+      // Navigate back first to prevent re-render flash
+      router.back();
+      // Cloud Function handles task rescheduling
+      markAsInProgress(reminderId, reminder.followUpMinutes || 10);
+    }
+  };
+
+  // Dismiss on 2nd ring - marks as missed and notifies child
+  const handleDismiss = async () => {
+    if (reminderId && reminder) {
+      await stopAlarm();
+      // Navigate back first
+      router.back();
+      // Cloud Function handles status update and child notification
+      dismiss(reminderId);
+    }
+  };
+
+  // Show loading state while waiting for reminder to sync
+  if (isWaitingForReminder) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.noReminderContainer}>
+          <ActivityIndicator size="large" color={colors.primary[500]} />
+          <Text style={styles.loadingText}>Loading reminder...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!reminder) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.noReminderContainer}>
-          <Ionicons name="checkmark-circle" size={64} color={colors.success.main} />
+          <Ionicons name="alert-circle" size={64} color={colors.warning.main} />
           <Text style={styles.noReminderText}>Reminder not found</Text>
+          <Text style={styles.noReminderSubtext}>
+            This reminder may have been completed or deleted.
+          </Text>
           <Button title="Go Back" onPress={() => router.back()} variant="primary" />
         </View>
       </SafeAreaView>
@@ -164,9 +194,10 @@ export default function ReminderAlarmScreen() {
 
   const accentColor = labelColors[reminder.label] || colors.primary[500];
   
-  // Check if this is the 2nd ring (snooze only allowed once = max 2 rings)
-  const totalAttempts = (reminder.snoozeCount || 0) + (reminder.missCount || 0);
-  const canSnooze = totalAttempts < 1; // Only allow snooze on 1st ring
+  // Determine if this is the 1st or 2nd ring using ringCount
+  const ringCount = reminder.ringCount || 1;
+  const isFirstRing = ringCount === 1;
+  const isSecondRing = ringCount >= 2;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: `${accentColor}15` }]}>
@@ -205,7 +236,7 @@ export default function ReminderAlarmScreen() {
       {/* Actions */}
       <View style={styles.actions}>
         {/* Show warning message on 2nd ring (final reminder) */}
-        {!canSnooze && (
+        {isSecondRing && (
           <View style={styles.finalRingBadge}>
             <Ionicons name="warning" size={18} color={colors.warning.dark} />
             <Text style={styles.finalRingText}>
@@ -214,6 +245,7 @@ export default function ReminderAlarmScreen() {
           </View>
         )}
 
+        {/* Always show Done button */}
         <Button
           title="Done ✓"
           onPress={handleDone}
@@ -223,14 +255,41 @@ export default function ReminderAlarmScreen() {
           style={{ backgroundColor: accentColor }}
         />
 
-        <Button
-          title={`Snooze (${reminder.followUpMinutes || 10} min)`}
-          onPress={handleSnooze}
-          variant="outline"
-          size="lg"
-          fullWidth
-          icon={<Ionicons name="alarm-outline" size={20} color={colors.text.secondary} />}
-        />
+        {/* First ring: Show "I'm On It" and "Snooze" buttons */}
+        {isFirstRing && (
+          <>
+            <Button
+              title="I'm On It 👍"
+              onPress={handleImOnIt}
+              variant="secondary"
+              size="lg"
+              fullWidth
+            />
+
+            <Button
+              title={`Snooze (${reminder.followUpMinutes || 10} min)`}
+              onPress={handleSnooze}
+              variant="outline"
+              size="lg"
+              fullWidth
+              icon={<Ionicons name="alarm-outline" size={20} color={colors.text.secondary} />}
+            />
+          </>
+        )}
+
+        {/* Second ring: Show "Dismiss" button - marks as missed */}
+        {isSecondRing && (
+          <Button
+            title="Dismiss"
+            onPress={handleDismiss}
+            variant="outline"
+            size="lg"
+            fullWidth
+            style={styles.dismissButton}
+            textStyle={styles.dismissButtonText}
+            icon={<Ionicons name="close-circle-outline" size={20} color={colors.danger.main} />}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -307,7 +366,20 @@ const styles = StyleSheet.create({
   },
   noReminderText: {
     fontSize: typography.fontSize.xl,
+    color: colors.text.primary,
+    fontWeight: '600',
+    marginBottom: spacing[2],
+  },
+  noReminderSubtext: {
+    fontSize: typography.fontSize.base,
     color: colors.text.secondary,
+    textAlign: 'center',
+    marginBottom: spacing[4],
+  },
+  loadingText: {
+    fontSize: typography.fontSize.lg,
+    color: colors.text.secondary,
+    marginTop: spacing[4],
   },
   finalRingBadge: {
     flexDirection: 'row',
@@ -323,6 +395,12 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     color: colors.warning.dark,
     fontWeight: '500',
+  },
+  dismissButton: {
+    borderColor: colors.danger.main,
+  },
+  dismissButtonText: {
+    color: colors.danger.main,
   },
 });
 
